@@ -28,10 +28,15 @@ public class ProductService {
     private final ProductRepository repository;
     @Autowired
     private final ProductMapper mapper;
+    @Autowired
+    private final ProductNotificationService productNotificationService;
 
-    public ProductService(ProductRepository productRepository, ProductMapper productMapper){
+    public ProductService(ProductRepository productRepository,
+                          ProductMapper productMapper,
+                          ProductNotificationService productNotificationService){
         this.repository = productRepository;
         this.mapper = productMapper;
+        this.productNotificationService = productNotificationService;
     }
 
     public List<ProductResponseDTO> findAll(String category, String condition, Boolean featured, String soldDate){
@@ -83,6 +88,7 @@ public class ProductService {
         p.setDisponivel(1);
 
         Product saved = repository.save(p);
+        productNotificationService.notifyNewProduct(saved);
         return mapper.toResponse(saved);
     }
 
