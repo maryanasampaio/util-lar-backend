@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.example</groupId>
 	<artifactId>product-api</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.1-deploy</version>
 	<name>product-api</name>
 	<description>API para cadastro de produtos</description>
 	<url/>
