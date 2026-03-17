@@ -17,9 +17,12 @@ import com.example.product_api.repository.CardBrandRepository;
 import com.example.product_api.repository.CardFeeRateRepository;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.List;
 import java.math.BigDecimal;
 
 /**
@@ -132,32 +135,43 @@ public class DataSeeder {
                 brand.setActive(true);
                 cardBrandRepository.save(brand);
 
+                Map<String, CardFeeRate> existingRates = new HashMap<>();
+                for (CardFeeRate existingRate : cardFeeRateRepository.findAllByCardBrand_IdAndActiveTrue(brand.getId())) {
+                    existingRates.put(rateKey(existingRate.getInstallments(), existingRate.getRepasse()), existingRate);
+                }
+
+                List<CardFeeRate> ratesToSave = new ArrayList<>();
+
                 for (Map.Entry<Integer, BigDecimal> entry : rates.entrySet()) {
                     Integer installments = entry.getKey();
                     BigDecimal ratePercent = entry.getValue();
 
-                    seedRate(cardFeeRateRepository, brand, installments, true, ratePercent);
-                    seedRate(cardFeeRateRepository, brand, installments, false, ratePercent);
+                    ratesToSave.add(buildRate(existingRates, brand, installments, true, ratePercent));
+                    ratesToSave.add(buildRate(existingRates, brand, installments, false, ratePercent));
                 }
+
+                cardFeeRateRepository.saveAll(ratesToSave);
             }
 
             System.out.println("✅ Dados de simulação (bandeiras e taxas) verificados com sucesso");
         };
     }
 
-    private void seedRate(CardFeeRateRepository cardFeeRateRepository, CardBrand brand, Integer installments, Boolean repasse, BigDecimal ratePercent) {
-        CardFeeRate rate = cardFeeRateRepository
-            .findByCardBrand_IdAndInstallmentsAndRepasseAndActiveTrue(brand.getId(), installments, repasse)
-            .orElseGet(() -> {
-                CardFeeRate r = new CardFeeRate();
-                r.setCardBrand(brand);
-                r.setInstallments(installments);
-                r.setRepasse(repasse);
-                return r;
-            });
+    private CardFeeRate buildRate(Map<String, CardFeeRate> existingRates, CardBrand brand, Integer installments, Boolean repasse, BigDecimal ratePercent) {
+        CardFeeRate rate = existingRates.get(rateKey(installments, repasse));
+        if (rate == null) {
+            rate = new CardFeeRate();
+            rate.setCardBrand(brand);
+            rate.setInstallments(installments);
+            rate.setRepasse(repasse);
+        }
 
         rate.setRatePercent(ratePercent);
         rate.setActive(true);
-        cardFeeRateRepository.save(rate);
+        return rate;
+    }
+
+    private String rateKey(Integer installments, Boolean repasse) {
+        return installments + ":" + repasse;
     }
 }
