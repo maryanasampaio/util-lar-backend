@@ -28,4 +28,4 @@ jobs:
       - name: Upload File SCP
         run: |
           scp -i ~/.ssh/id_ed25519 ./target/${FILE_NAME} root@${{ secrets.SSH_IP }}:${{ vars.DEST_DIR }} && \
-          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_IP}} service ${SERVICE_NAME} restart
+          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_IP}} service spring@${SERVICE_NAME} restart
