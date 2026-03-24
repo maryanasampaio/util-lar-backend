@@ -2,7 +2,9 @@ package com.example.product_api.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,15 +51,23 @@ public class WhatsAppNotificationService {
         }
 
         String message = formatNewProductMessage(product);
+        String mediaUrl = resolvePrimaryImageUrl(product).orElse(null);
         logger.info("WhatsApp notification started: productId={}, slug={}, recipientsCount={}, sender={}",
                 product != null ? product.getId() : null,
                 product != null ? product.getSlug() : null,
                 recipients.size(),
                 maskPhone(twilioWhatsappNumber));
 
+        if (mediaUrl != null) {
+            logger.info("WhatsApp notification will include media: productId={}, slug={}, mediaUrl={}",
+                product != null ? product.getId() : null,
+                product != null ? product.getSlug() : null,
+                mediaUrl);
+        }
+
         for (String recipient : recipients) {
             try {
-                String sid = sendMessage(recipient, message);
+            String sid = sendMessage(recipient, message, mediaUrl);
                 logger.info("WhatsApp message sent successfully: productId={}, slug={}, recipient={}, sid={}",
                         product != null ? product.getId() : null,
                         product != null ? product.getSlug() : null,
@@ -79,10 +89,14 @@ public class WhatsAppNotificationService {
     }
 
     public String sendTestMessage(String phoneNumber) {
-        return sendMessage(phoneNumber, "Teste de notificacao WhatsApp configurado com sucesso.");
+        return sendMessage(phoneNumber, "Teste de notificacao WhatsApp configurado com sucesso.", null);
     }
 
     public String sendMessage(String phoneNumber, String message) {
+        return sendMessage(phoneNumber, message, null);
+    }
+
+    public String sendMessage(String phoneNumber, String message, String mediaUrl) {
         if (!isConfigured()) {
             throw new RuntimeException("Twilio nao configurado. Defina TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN.");
         }
@@ -97,21 +111,55 @@ public class WhatsAppNotificationService {
                 maskPhone(twilioWhatsappNumber),
                 message != null ? message.length() : 0);
 
-        Message twilioMessage = Message.creator(
+        Message.Creator creator = Message.creator(
             new PhoneNumber(to),
             new PhoneNumber(from),
             message
-        ).create();
+        );
+
+        if (notBlank(mediaUrl)) {
+            creator.setMediaUrl(List.of(URI.create(mediaUrl)));
+        }
+
+        Message twilioMessage = creator.create();
 
         return twilioMessage.getSid();
     }
 
     public String formatNewProductMessage(Product product) {
-        String productUrl = frontendUrl + "/produtos/" + product.getSlug();
+        String productUrl = buildProductUrl(product);
         return "Novo produto disponivel: " + product.getName()
             + "\nPreco: " + formatCurrency(product.getPrice())
             + "\nCategoria: " + safe(product.getCategory())
             + "\nVer produto: " + productUrl;
+    }
+
+    private String buildProductUrl(Product product) {
+        String normalizedFrontendUrl = frontendUrl == null ? "" : frontendUrl.trim();
+        while (normalizedFrontendUrl.endsWith("/")) {
+            normalizedFrontendUrl = normalizedFrontendUrl.substring(0, normalizedFrontendUrl.length() - 1);
+        }
+
+        return normalizedFrontendUrl + "/produtos/" + product.getSlug();
+    }
+
+    private Optional<String> resolvePrimaryImageUrl(Product product) {
+        if (product == null || product.getImages() == null || product.getImages().isEmpty()) {
+            return Optional.empty();
+        }
+
+        return product.getImages().stream()
+                .filter(this::isAbsoluteHttpUrl)
+                .findFirst();
+    }
+
+    private boolean isAbsoluteHttpUrl(String value) {
+        if (!notBlank(value)) {
+            return false;
+        }
+
+        String normalizedValue = value.trim().toLowerCase();
+        return normalizedValue.startsWith("http://") || normalizedValue.startsWith("https://");
     }
 
     private String formatCurrency(Long cents) {
