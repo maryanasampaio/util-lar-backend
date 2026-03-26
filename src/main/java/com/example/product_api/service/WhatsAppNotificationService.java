@@ -1,9 +1,12 @@
 package com.example.product_api.service;
 
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.slf4j.Logger;
@@ -12,6 +15,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.example.product_api.model.Product;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twilio.Twilio;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
@@ -30,10 +35,20 @@ public class WhatsAppNotificationService {
     @Value("${twilio.whatsapp-number:+14155238886}")
     private String twilioWhatsappNumber;
 
+    @Value("${twilio.whatsapp.messaging-service-sid:}")
+    private String messagingServiceSid;
+
+    @Value("${twilio.whatsapp.new-product-content-sid:}")
+    private String newProductContentSid;
+
+    @Value("${twilio.whatsapp.price-update-content-sid:}")
+    private String priceUpdateContentSid;
+
     @Value("${app.frontend-url:http://localhost:4200}")
     private String frontendUrl;
 
     private volatile boolean initialized = false;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public void notifyNewProduct(Product product, List<String> recipients) {
         if (recipients == null || recipients.isEmpty()) {
@@ -50,15 +65,22 @@ public class WhatsAppNotificationService {
             return;
         }
 
-        String message = formatNewProductMessage(product);
-        String mediaUrl = resolvePrimaryImageUrl(product).orElse(null);
+                boolean useTemplate = hasTemplate(newProductContentSid);
+                String message = useTemplate ? null : formatNewProductMessage(product);
+                String mediaUrl = useTemplate ? null : resolvePrimaryImageUrl(product).orElse(null);
         logger.info("WhatsApp notification started: productId={}, slug={}, recipientsCount={}, sender={}",
                 product != null ? product.getId() : null,
                 product != null ? product.getSlug() : null,
                 recipients.size(),
                 maskPhone(twilioWhatsappNumber));
 
-        if (mediaUrl != null) {
+                if (!useTemplate) {
+                    logger.warn("WhatsApp notification is using free-form message for productId={}, slug={}. Outside the 24-hour WhatsApp window this may fail with error 63016. Configure twilio.whatsapp.new-product-content-sid to use an approved template.",
+                        product != null ? product.getId() : null,
+                        product != null ? product.getSlug() : null);
+                }
+
+                if (mediaUrl != null) {
             logger.info("WhatsApp notification will include media: productId={}, slug={}, mediaUrl={}",
                 product != null ? product.getId() : null,
                 product != null ? product.getSlug() : null,
@@ -67,7 +89,9 @@ public class WhatsAppNotificationService {
 
         for (String recipient : recipients) {
             try {
-            String sid = sendMessage(recipient, message, mediaUrl);
+                    String sid = useTemplate
+                        ? sendContentTemplate(recipient, newProductContentSid, buildNewProductTemplateVariables(product))
+                        : sendMessage(recipient, message, mediaUrl);
                 logger.info("WhatsApp message sent successfully: productId={}, slug={}, recipient={}, sid={}",
                         product != null ? product.getId() : null,
                         product != null ? product.getSlug() : null,
@@ -103,16 +127,25 @@ public class WhatsAppNotificationService {
             return;
         }
 
-        String message = formatPriceUpdatedMessage(product, previousPrice);
+                boolean useTemplate = hasTemplate(priceUpdateContentSid);
+                String message = useTemplate ? null : formatPriceUpdatedMessage(product, previousPrice);
         logger.info("WhatsApp price update notification started: productId={}, slug={}, recipientsCount={}, sender={}",
                 product != null ? product.getId() : null,
                 product != null ? product.getSlug() : null,
                 recipients.size(),
                 maskPhone(twilioWhatsappNumber));
 
+                if (!useTemplate) {
+                    logger.warn("WhatsApp price update notification is using free-form message for productId={}, slug={}. Outside the 24-hour WhatsApp window this may fail with error 63016. Configure twilio.whatsapp.price-update-content-sid to use an approved template.",
+                        product != null ? product.getId() : null,
+                        product != null ? product.getSlug() : null);
+                }
+
         for (String recipient : recipients) {
             try {
-                String sid = sendMessage(recipient, message, null);
+                    String sid = useTemplate
+                        ? sendContentTemplate(recipient, priceUpdateContentSid, buildPriceUpdatedTemplateVariables(product, previousPrice))
+                        : sendMessage(recipient, message, null);
                 logger.info("WhatsApp price update message sent successfully: productId={}, slug={}, recipient={}, sid={}",
                         product != null ? product.getId() : null,
                         product != null ? product.getSlug() : null,
@@ -171,6 +204,39 @@ public class WhatsAppNotificationService {
         return twilioMessage.getSid();
     }
 
+    public String sendContentTemplate(String phoneNumber, String contentSid, Map<String, String> variables) {
+        if (!isConfigured()) {
+            throw new RuntimeException("Twilio nao configurado. Defina TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN.");
+        }
+
+        if (!hasTemplate(contentSid)) {
+            throw new RuntimeException("Template WhatsApp nao configurado. Defina o Content SID correspondente.");
+        }
+
+        initializeTwilio();
+
+        String to = toWhatsAppAddress(phoneNumber);
+        String from = toWhatsAppAddress(twilioWhatsappNumber);
+
+        logger.info("Creating Twilio WhatsApp templated message: to={}, from={}, contentSid={}, hasMessagingServiceSid={}, variablesCount={}",
+                maskPhone(phoneNumber),
+                maskPhone(twilioWhatsappNumber),
+                contentSid,
+                notBlank(messagingServiceSid),
+                variables != null ? variables.size() : 0);
+
+        var creator = Message.creator(new PhoneNumber(to), new PhoneNumber(from), "");
+        creator.setContentSid(contentSid);
+        creator.setContentVariables(toJson(variables));
+
+        if (notBlank(messagingServiceSid)) {
+            creator.setMessagingServiceSid(messagingServiceSid);
+        }
+
+        Message twilioMessage = creator.create();
+        return twilioMessage.getSid();
+    }
+
     public String formatNewProductMessage(Product product) {
         String productUrl = buildProductUrl(product);
         return "Novo produto disponivel: " + product.getName()
@@ -188,13 +254,40 @@ public class WhatsAppNotificationService {
             + "\nVer produto: " + productUrl;
     }
 
+    private Map<String, String> buildNewProductTemplateVariables(Product product) {
+        Map<String, String> variables = new LinkedHashMap<>();
+        variables.put("1", safe(product != null ? product.getName() : null));
+        variables.put("2", formatCurrency(product != null ? product.getPrice() : null));
+        variables.put("3", safe(product != null ? product.getCategory() : null));
+        variables.put("4", buildProductUrl(product));
+        return variables;
+    }
+
+    private Map<String, String> buildPriceUpdatedTemplateVariables(Product product, Long previousPrice) {
+        Map<String, String> variables = new LinkedHashMap<>();
+        variables.put("1", safe(product != null ? product.getName() : null));
+        variables.put("2", formatCurrency(previousPrice));
+        variables.put("3", formatCurrency(product != null ? product.getPrice() : null));
+        variables.put("4", safe(product != null ? product.getCategory() : null));
+        variables.put("5", buildProductUrl(product));
+        return variables;
+    }
+
     private String buildProductUrl(Product product) {
+        if (product == null || !notBlank(product.getSlug())) {
+            return frontendUrl;
+        }
+
         String normalizedFrontendUrl = frontendUrl == null ? "" : frontendUrl.trim();
         while (normalizedFrontendUrl.endsWith("/")) {
             normalizedFrontendUrl = normalizedFrontendUrl.substring(0, normalizedFrontendUrl.length() - 1);
         }
 
         return normalizedFrontendUrl + "/produtos/" + product.getSlug();
+    }
+
+    private boolean hasTemplate(String contentSid) {
+        return notBlank(contentSid);
     }
 
     private Optional<String> resolvePrimaryImageUrl(Product product) {
@@ -239,6 +332,14 @@ public class WhatsAppNotificationService {
         }
 
         return "whatsapp:+" + digits;
+    }
+
+    private String toJson(Map<String, String> variables) {
+        try {
+            return objectMapper.writeValueAsString(variables == null ? Map.of() : variables);
+        } catch (JsonProcessingException ex) {
+            throw new UncheckedIOException("Falha ao serializar variaveis do template WhatsApp", ex);
+        }
     }
 
     private boolean isConfigured() {
