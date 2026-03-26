@@ -15,6 +15,7 @@ import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -45,13 +46,13 @@ public class FinancialService {
         DashboardResponseDTO dashboard = new DashboardResponseDTO();
         
         // Métricas do mês atual
-        dashboard.setMesAtual(getCurrentMonthMetrics());
+        dashboard.setMesAtual(runSafely("métricas do mês atual", this::getCurrentMonthMetrics, this::emptyCurrentMonthMetrics));
         
         // Métricas gerais (histórico)
-        dashboard.setGeral(getGeneralMetrics());
+        dashboard.setGeral(runSafely("métricas gerais", this::getGeneralMetrics, this::emptyGeneralMetrics));
         
         // Métricas de estoque
-        dashboard.setEstoque(getStockMetrics());
+        dashboard.setEstoque(runSafely("métricas de estoque", this::getStockMetrics, this::emptyStockMetrics));
         
         return dashboard;
     }
@@ -183,38 +184,40 @@ public class FinancialService {
     }
 
     private EvolutionResponseDTO buildMonthlyEvolution(int meses) {
-        log.info("Calculando evolução mensal dos últimos {} meses", meses);
-        
-        List<Object[]> results = financialRepository.getMonthlyEvolution(meses);
-        
-        List<MonthlyStatsDTO> monthlyStats = new ArrayList<>();
-        Long maxProfit = 1L; // Mínimo 1 para evitar divisão por zero em gráficos
-        
-        for (Object[] row : results) {
-            if (row == null || row.length < 6) continue;
-            
-            MonthlyStatsDTO dto = new MonthlyStatsDTO();
-            dto.setMesChave(toString(row[0]));
-            dto.setMes(formatMonthDisplay(toString(row[0])));
-            dto.setItensVendidos(toInteger(row[1]));
-            dto.setVendas(toLong(row[2]));
-            dto.setCusto(toLong(row[3]));
-            dto.setLucro(toLong(row[4]));
-            dto.setMargem(toDouble(row[5]));
-            
-            monthlyStats.add(dto);
-            
-            // Atualizar lucro máximo
-            if (dto.getLucro() != null && dto.getLucro() > maxProfit) {
-                maxProfit = dto.getLucro();
+        return runSafely("evolução mensal", () -> {
+            log.info("Calculando evolução mensal dos últimos {} meses", meses);
+
+            List<Object[]> results = financialRepository.getMonthlyEvolution(meses);
+
+            List<MonthlyStatsDTO> monthlyStats = new ArrayList<>();
+            Long maxProfit = 1L; // Mínimo 1 para evitar divisão por zero em gráficos
+
+            for (Object[] row : results) {
+                if (row == null || row.length < 6) continue;
+
+                MonthlyStatsDTO dto = new MonthlyStatsDTO();
+                dto.setMesChave(toString(row[0]));
+                dto.setMes(formatMonthDisplay(toString(row[0])));
+                dto.setItensVendidos(toInteger(row[1]));
+                dto.setVendas(toLong(row[2]));
+                dto.setCusto(toLong(row[3]));
+                dto.setLucro(toLong(row[4]));
+                dto.setMargem(toDouble(row[5]));
+
+                monthlyStats.add(dto);
+
+                // Atualizar lucro máximo
+                if (dto.getLucro() != null && dto.getLucro() > maxProfit) {
+                    maxProfit = dto.getLucro();
+                }
             }
-        }
-        
-        EvolutionResponseDTO response = new EvolutionResponseDTO();
-        response.setMeses(monthlyStats);
-        response.setLucroMaximoMes(maxProfit);
-        
-        return response;
+
+            EvolutionResponseDTO response = new EvolutionResponseDTO();
+            response.setMeses(monthlyStats);
+            response.setLucroMaximoMes(maxProfit);
+
+            return response;
+        }, this::emptyEvolutionResponse);
     }
 
     /**
@@ -231,60 +234,62 @@ public class FinancialService {
     }
 
     private ProductsResponseDTO buildProducts(String tipo, int limit) {
-        log.info("Buscando produtos tipo: {} (limit: {})", tipo, limit);
-        
-        List<Object[]> results;
-        
-        switch (tipo.toLowerCase()) {
-            case "top":
-                results = financialRepository.getTopProducts(limit);
-                break;
-            case "baixa-margem":
-                results = financialRepository.getLowMarginProducts(limit);
-                break;
-            case "parados":
-                results = financialRepository.getStuckProducts(limit);
-                break;
-            default:
-                throw new IllegalArgumentException("Tipo inválido: " + tipo + ". Use: top, baixa-margem ou parados");
-        }
-        
-        List<ProductRankingDTO> products = new ArrayList<>();
-        
-        for (Object[] row : results) {
-            if (row == null) continue;
-            
-            ProductRankingDTO dto = new ProductRankingDTO();
-            
-            if ("top".equalsIgnoreCase(tipo) && row.length >= 8) {
-                // Top produtos: [id, nome, categoria, preco, precoCusto, vezesVendido, receitaTotal, margem]
-                dto.setId(toLong(row[0]));
-                dto.setNome(toString(row[1]));
-                dto.setCategoria(toString(row[2]));
-                dto.setPreco(toLong(row[3]));
-                dto.setPrecoCusto(toLong(row[4]));
-                dto.setVezesVendido(toInteger(row[5]));
-                dto.setReceitaTotal(toLong(row[6]));
-                dto.setMargem(toDouble(row[7]));
-            } else if (row.length >= 7) {
-                // Baixa margem / Parados: [id, nome, categoria, preco, precoCusto, margem, estoque]
-                dto.setId(toLong(row[0]));
-                dto.setNome(toString(row[1]));
-                dto.setCategoria(toString(row[2]));
-                dto.setPreco(toLong(row[3]));
-                dto.setPrecoCusto(toLong(row[4]));
-                dto.setMargem(toDouble(row[5]));
-                dto.setEstoque(toInteger(row[6]));
+        return runSafely("lista de produtos '" + tipo + "'", () -> {
+            log.info("Buscando produtos tipo: {} (limit: {})", tipo, limit);
+
+            List<Object[]> results;
+
+            switch (tipo.toLowerCase()) {
+                case "top":
+                    results = financialRepository.getTopProducts(limit);
+                    break;
+                case "baixa-margem":
+                    results = financialRepository.getLowMarginProducts(limit);
+                    break;
+                case "parados":
+                    results = financialRepository.getStuckProducts(limit);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Tipo inválido: " + tipo + ". Use: top, baixa-margem ou parados");
             }
-            
-            products.add(dto);
-        }
-        
-        ProductsResponseDTO response = new ProductsResponseDTO();
-        response.setTipo(tipo);
-        response.setProdutos(products);
-        
-        return response;
+
+            List<ProductRankingDTO> products = new ArrayList<>();
+
+            for (Object[] row : results) {
+                if (row == null) continue;
+
+                ProductRankingDTO dto = new ProductRankingDTO();
+
+                if ("top".equalsIgnoreCase(tipo) && row.length >= 8) {
+                    // Top produtos: [id, nome, categoria, preco, precoCusto, vezesVendido, receitaTotal, margem]
+                    dto.setId(toLong(row[0]));
+                    dto.setNome(toString(row[1]));
+                    dto.setCategoria(toString(row[2]));
+                    dto.setPreco(toLong(row[3]));
+                    dto.setPrecoCusto(toLong(row[4]));
+                    dto.setVezesVendido(toInteger(row[5]));
+                    dto.setReceitaTotal(toLong(row[6]));
+                    dto.setMargem(toDouble(row[7]));
+                } else if (row.length >= 7) {
+                    // Baixa margem / Parados: [id, nome, categoria, preco, precoCusto, margem, estoque]
+                    dto.setId(toLong(row[0]));
+                    dto.setNome(toString(row[1]));
+                    dto.setCategoria(toString(row[2]));
+                    dto.setPreco(toLong(row[3]));
+                    dto.setPrecoCusto(toLong(row[4]));
+                    dto.setMargem(toDouble(row[5]));
+                    dto.setEstoque(toInteger(row[6]));
+                }
+
+                products.add(dto);
+            }
+
+            ProductsResponseDTO response = new ProductsResponseDTO();
+            response.setTipo(tipo);
+            response.setProdutos(products);
+
+            return response;
+        }, () -> emptyProductsResponse(tipo));
     }
 
     @Cacheable(value = "soldProductsByMonth", key = "#year + '_' + #month", unless = "#result == null")
@@ -297,55 +302,59 @@ public class FinancialService {
     }
 
     public FinancialDiagnosticsDTO getDiagnostics() {
-        LocalDate now = LocalDate.now();
-        int year = now.getYear();
-        int month = now.getMonthValue();
+        return runSafely("diagnóstico financeiro", () -> {
+            LocalDate now = LocalDate.now();
+            int year = now.getYear();
+            int month = now.getMonthValue();
 
-        Object[] monthRaw = normalizeRow(financialRepository.getMonthMetricsRaw(year, month));
-        Object[] stockRaw = normalizeRow(financialRepository.getStockMetricsRaw());
+            Object[] monthRaw = normalizeRow(financialRepository.getMonthMetricsRaw(year, month));
+            Object[] stockRaw = normalizeRow(financialRepository.getStockMetricsRaw());
 
-        FinancialDiagnosticsDTO dto = new FinancialDiagnosticsDTO();
-        dto.setJdbcUrl(datasourceUrl);
-        dto.setCurrentDatabase(financialRepository.getCurrentDatabase());
-        dto.setRuntimeYear(year);
-        dto.setRuntimeMonth(month);
-        dto.setVendidosMes(monthRaw != null ? toInteger(monthRaw[0]) : 0);
-        dto.setVendasMes(monthRaw != null ? toLong(monthRaw[1]) : 0L);
-        dto.setCustoMes(monthRaw != null ? toLong(monthRaw[2]) : 0L);
-        dto.setLucroMes(monthRaw != null ? toLong(monthRaw[3]) : 0L);
-        dto.setEstoqueQtd(stockRaw != null ? toInteger(stockRaw[0]) : 0);
-        dto.setEstoqueCusto(stockRaw != null ? toLong(stockRaw[1]) : 0L);
-        dto.setEstoquePotencial(stockRaw != null ? toLong(stockRaw[2]) : 0L);
-        return dto;
+            FinancialDiagnosticsDTO dto = new FinancialDiagnosticsDTO();
+            dto.setJdbcUrl(datasourceUrl);
+            dto.setCurrentDatabase(financialRepository.getCurrentDatabase());
+            dto.setRuntimeYear(year);
+            dto.setRuntimeMonth(month);
+            dto.setVendidosMes(monthRaw != null ? toInteger(monthRaw[0]) : 0);
+            dto.setVendasMes(monthRaw != null ? toLong(monthRaw[1]) : 0L);
+            dto.setCustoMes(monthRaw != null ? toLong(monthRaw[2]) : 0L);
+            dto.setLucroMes(monthRaw != null ? toLong(monthRaw[3]) : 0L);
+            dto.setEstoqueQtd(stockRaw != null ? toInteger(stockRaw[0]) : 0);
+            dto.setEstoqueCusto(stockRaw != null ? toLong(stockRaw[1]) : 0L);
+            dto.setEstoquePotencial(stockRaw != null ? toLong(stockRaw[2]) : 0L);
+            return dto;
+        }, this::emptyDiagnostics);
     }
 
     private SoldProductsByMonthResponseDTO buildSoldProductsByMonth(int year, int month) {
-        List<Object[]> results = financialRepository.getSoldProductsByMonth(year, month);
+        return runSafely("vendidos por mês", () -> {
+            List<Object[]> results = financialRepository.getSoldProductsByMonth(year, month);
 
-        List<SoldProductDTO> soldProducts = new ArrayList<>();
-        long totalValue = 0L;
+            List<SoldProductDTO> soldProducts = new ArrayList<>();
+            long totalValue = 0L;
 
-        for (Object[] row : results) {
-            if (row == null || row.length < 5) continue;
+            for (Object[] row : results) {
+                if (row == null || row.length < 5) continue;
 
-            SoldProductDTO dto = new SoldProductDTO();
-            dto.setId(toLong(row[0]));
-            dto.setNome(toString(row[1]));
-            dto.setCategoria(toString(row[2]));
-            dto.setPreco(toLong(row[3]));
-            dto.setSoldDate(toString(row[4]));
+                SoldProductDTO dto = new SoldProductDTO();
+                dto.setId(toLong(row[0]));
+                dto.setNome(toString(row[1]));
+                dto.setCategoria(toString(row[2]));
+                dto.setPreco(toLong(row[3]));
+                dto.setSoldDate(toString(row[4]));
 
-            totalValue += dto.getPreco() != null ? dto.getPreco() : 0L;
-            soldProducts.add(dto);
-        }
+                totalValue += dto.getPreco() != null ? dto.getPreco() : 0L;
+                soldProducts.add(dto);
+            }
 
-        SoldProductsByMonthResponseDTO response = new SoldProductsByMonthResponseDTO();
-        response.setAno(year);
-        response.setMes(month);
-        response.setQuantidadeVendidos(soldProducts.size());
-        response.setValorTotalVendido(totalValue);
-        response.setProdutos(soldProducts);
-        return response;
+            SoldProductsByMonthResponseDTO response = new SoldProductsByMonthResponseDTO();
+            response.setAno(year);
+            response.setMes(month);
+            response.setQuantidadeVendidos(soldProducts.size());
+            response.setValorTotalVendido(totalValue);
+            response.setProdutos(soldProducts);
+            return response;
+        }, () -> emptySoldProductsByMonth(year, month));
     }
 
     /**
@@ -432,5 +441,57 @@ public class FinancialService {
             return (Object[]) row[0];
         }
         return row;
+    }
+
+    private <T> T runSafely(String operation, Supplier<T> action, Supplier<T> fallback) {
+        try {
+            return action.get();
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Falha ao carregar {}. Retornando fallback vazio.", operation, ex);
+            return fallback.get();
+        }
+    }
+
+    private CurrentMonthMetricsDTO emptyCurrentMonthMetrics() {
+        return new CurrentMonthMetricsDTO(0L, 0L, 0L, 0.0, 0, 0L, "", 0.0);
+    }
+
+    private GeneralMetricsDTO emptyGeneralMetrics() {
+        return new GeneralMetricsDTO(0L, 0L, 0, 0.0);
+    }
+
+    private StockMetricsDTO emptyStockMetrics() {
+        return new StockMetricsDTO(0, 0L, 0L, 0L, 0);
+    }
+
+    private EvolutionResponseDTO emptyEvolutionResponse() {
+        return new EvolutionResponseDTO(new ArrayList<>(), 1L);
+    }
+
+    private ProductsResponseDTO emptyProductsResponse(String tipo) {
+        return new ProductsResponseDTO(tipo, new ArrayList<>());
+    }
+
+    private SoldProductsByMonthResponseDTO emptySoldProductsByMonth(int year, int month) {
+        return new SoldProductsByMonthResponseDTO(year, month, 0, 0L, new ArrayList<>());
+    }
+
+    private FinancialDiagnosticsDTO emptyDiagnostics() {
+        LocalDate now = LocalDate.now();
+        return new FinancialDiagnosticsDTO(
+            datasourceUrl,
+            "",
+            now.getYear(),
+            now.getMonthValue(),
+            0,
+            0L,
+            0L,
+            0L,
+            0,
+            0L,
+            0L
+        );
     }
 }

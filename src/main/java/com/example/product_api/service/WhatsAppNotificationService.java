@@ -88,6 +88,51 @@ public class WhatsAppNotificationService {
                 product != null ? product.getSlug() : null);
     }
 
+    public void notifyPriceUpdated(Product product, Long previousPrice, List<String> recipients) {
+        if (recipients == null || recipients.isEmpty()) {
+            logger.info("WhatsApp price update notification skipped: no active recipients for productId={}, slug={}",
+                    product != null ? product.getId() : null,
+                    product != null ? product.getSlug() : null);
+            return;
+        }
+
+        if (!isConfigured()) {
+            logger.warn("WhatsApp price update notification skipped: Twilio is not configured. productId={}, slug={}",
+                    product != null ? product.getId() : null,
+                    product != null ? product.getSlug() : null);
+            return;
+        }
+
+        String message = formatPriceUpdatedMessage(product, previousPrice);
+        logger.info("WhatsApp price update notification started: productId={}, slug={}, recipientsCount={}, sender={}",
+                product != null ? product.getId() : null,
+                product != null ? product.getSlug() : null,
+                recipients.size(),
+                maskPhone(twilioWhatsappNumber));
+
+        for (String recipient : recipients) {
+            try {
+                String sid = sendMessage(recipient, message, null);
+                logger.info("WhatsApp price update message sent successfully: productId={}, slug={}, recipient={}, sid={}",
+                        product != null ? product.getId() : null,
+                        product != null ? product.getSlug() : null,
+                        maskPhone(recipient),
+                        sid);
+            } catch (Exception ex) {
+                logger.error("WhatsApp price update message failed: productId={}, slug={}, recipient={}, error={}",
+                        product != null ? product.getId() : null,
+                        product != null ? product.getSlug() : null,
+                        maskPhone(recipient),
+                        ex.getMessage(),
+                        ex);
+            }
+        }
+
+        logger.info("WhatsApp price update notification finished: productId={}, slug={}",
+                product != null ? product.getId() : null,
+                product != null ? product.getSlug() : null);
+    }
+
     public String sendTestMessage(String phoneNumber) {
         return sendMessage(phoneNumber, "Teste de notificacao WhatsApp configurado com sucesso.", null);
     }
@@ -111,7 +156,7 @@ public class WhatsAppNotificationService {
                 maskPhone(twilioWhatsappNumber),
                 message != null ? message.length() : 0);
 
-        Message.Creator creator = Message.creator(
+        var creator = Message.creator(
             new PhoneNumber(to),
             new PhoneNumber(from),
             message
@@ -130,6 +175,15 @@ public class WhatsAppNotificationService {
         String productUrl = buildProductUrl(product);
         return "Novo produto disponivel: " + product.getName()
             + "\nPreco: " + formatCurrency(product.getPrice())
+            + "\nCategoria: " + safe(product.getCategory())
+            + "\nVer produto: " + productUrl;
+    }
+
+    public String formatPriceUpdatedMessage(Product product, Long previousPrice) {
+        String productUrl = buildProductUrl(product);
+        return "Preco atualizado: " + product.getName()
+            + "\nDe: " + formatCurrency(previousPrice)
+            + "\nPara: " + formatCurrency(product.getPrice())
             + "\nCategoria: " + safe(product.getCategory())
             + "\nVer produto: " + productUrl;
     }

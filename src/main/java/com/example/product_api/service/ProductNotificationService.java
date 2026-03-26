@@ -46,4 +46,29 @@ public class ProductNotificationService {
                     ex);
         }
     }
+
+    @Async
+    public void notifyPriceUpdated(Product product, Long previousPrice) {
+        try {
+            logger.info("Product price update notification flow started: productId={}, slug={}, previousPrice={}, currentPrice={}",
+                    product != null ? product.getId() : null,
+                    product != null ? product.getSlug() : null,
+                    previousPrice,
+                    product != null ? product.getPrice() : null);
+
+            List<String> recipients = notificationPreferenceRepository.findAllActiveWhatsappPhones();
+            logger.info("Active WhatsApp recipients loaded for price update: productId={}, slug={}, recipientsCount={}",
+                    product != null ? product.getId() : null,
+                    product != null ? product.getSlug() : null,
+                    recipients != null ? recipients.size() : 0);
+
+            whatsAppNotificationService.notifyPriceUpdated(product, previousPrice, recipients);
+        } catch (Exception ex) {
+            logger.error("Product price update notification flow failed: productId={}, slug={}, error={}",
+                    product != null ? product.getId() : null,
+                    product != null ? product.getSlug() : null,
+                    ex.getMessage(),
+                    ex);
+        }
+    }
 }

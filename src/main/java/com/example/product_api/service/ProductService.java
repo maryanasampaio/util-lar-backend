@@ -2,6 +2,7 @@ package com.example.product_api.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -106,9 +107,16 @@ public class ProductService {
         return mapper.toResponse(saved);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "dashboard", allEntries = true),
+        @CacheEvict(value = "monthlyEvolution", allEntries = true),
+        @CacheEvict(value = "products", allEntries = true)
+    })
     public ProductResponseDTO update(Long id, ProductRequestDTO dto){
         Product existing = repository.findById(id)
             .orElseThrow(() -> new NotFoundException("Produto não encontrado"));
+
+        Long previousPrice = existing.getPrice();
 
         String newSlug = SlugUtil.slugify(dto.getName());
 
@@ -120,6 +128,16 @@ public class ProductService {
         existing.setSlug(newSlug);
 
         Product saved = repository.save(existing);
+
+        if (!Objects.equals(previousPrice, saved.getPrice())) {
+            logger.info("Product price changed: id={}, slug={}, previousPrice={}, currentPrice={}",
+                    saved.getId(),
+                    saved.getSlug(),
+                    previousPrice,
+                    saved.getPrice());
+            productNotificationService.notifyPriceUpdated(saved, previousPrice);
+        }
+
         return mapper.toResponse(saved);
     }
 
