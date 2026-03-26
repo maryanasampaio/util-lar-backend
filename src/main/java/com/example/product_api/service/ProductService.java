@@ -2,8 +2,11 @@ package com.example.product_api.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.jpa.domain.Specification;
@@ -23,6 +26,8 @@ import com.example.product_api.repository.ProductRepository;
 
 @Service
 public class ProductService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
 
     @Autowired
     private final ProductRepository repository;
@@ -77,6 +82,12 @@ public class ProductService {
     public ProductResponseDTO create(ProductRequestDTO dto){
         String slug = SlugUtil.slugify(dto.getName());
 
+        logger.info("Creating product: name={}, slug={}, category={}, featured={}",
+                dto.getName(),
+                slug,
+                dto.getCategory(),
+                dto.getFeatured());
+
         if (repository.existsBySlug(slug)) {
             throw new ConflictException("Produto com este nome já existe");
         }
@@ -88,13 +99,24 @@ public class ProductService {
         p.setDisponivel(1);
 
         Product saved = repository.save(p);
+        logger.info("Product created successfully: id={}, slug={}", saved.getId(), saved.getSlug());
+
         productNotificationService.notifyNewProduct(saved);
+        logger.info("Product notification dispatched asynchronously: id={}, slug={}", saved.getId(), saved.getSlug());
+
         return mapper.toResponse(saved);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "dashboard", allEntries = true),
+        @CacheEvict(value = "monthlyEvolution", allEntries = true),
+        @CacheEvict(value = "products", allEntries = true)
+    })
     public ProductResponseDTO update(Long id, ProductRequestDTO dto){
         Product existing = repository.findById(id)
             .orElseThrow(() -> new NotFoundException("Produto não encontrado"));
+
+        Long previousPrice = existing.getPrice();
 
         String newSlug = SlugUtil.slugify(dto.getName());
 
@@ -106,6 +128,16 @@ public class ProductService {
         existing.setSlug(newSlug);
 
         Product saved = repository.save(existing);
+
+        if (!Objects.equals(previousPrice, saved.getPrice())) {
+            logger.info("Product price changed: id={}, slug={}, previousPrice={}, currentPrice={}",
+                    saved.getId(),
+                    saved.getSlug(),
+                    previousPrice,
+                    saved.getPrice());
+            productNotificationService.notifyPriceUpdated(saved, previousPrice);
+        }
+
         return mapper.toResponse(saved);
     }
 
