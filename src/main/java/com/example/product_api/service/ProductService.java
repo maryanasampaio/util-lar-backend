@@ -17,7 +17,6 @@ import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.dto.ProductDTO.AvailableProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.SoldProductRequestDTO;
-import com.example.product_api.exception.ConflictException;
 import com.example.product_api.exception.NotFoundException;
 import com.example.product_api.model.Product;
 import com.example.product_api.util.SlugUtil;
@@ -28,6 +27,8 @@ import com.example.product_api.repository.ProductRepository;
 public class ProductService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
+    private static final String DEFAULT_NAME = "Produto sem nome";
+    private static final String DEFAULT_SLUG = "produto-sem-nome";
 
     @Autowired
     private final ProductRepository repository;
@@ -80,20 +81,17 @@ public class ProductService {
         @CacheEvict(value = "products", allEntries = true)
     })
     public ProductResponseDTO create(ProductRequestDTO dto){
-        String slug = SlugUtil.slugify(dto.getName());
+        Product p = new Product();
+        mapper.populateEntityForCreate(dto, p);
+
+        String slug = generateUniqueSlug(buildSlugFromName(p.getName()), null);
 
         logger.info("Creating product: name={}, slug={}, category={}, featured={}",
-                dto.getName(),
+                p.getName(),
                 slug,
-                dto.getCategory(),
-                dto.getFeatured());
+                p.getCategory(),
+                p.getFeatured());
 
-        if (repository.existsBySlug(slug)) {
-            throw new ConflictException("Produto com este nome já existe");
-        }
-
-        Product p = new Product();
-        mapper.updateEntityFromDto(dto, p);
         p.setSlug(slug);
         p.setSoldDate(null);
         p.setDisponivel(1);
@@ -118,13 +116,12 @@ public class ProductService {
 
         Long previousPrice = existing.getPrice();
 
-        String newSlug = SlugUtil.slugify(dto.getName());
-
-        if (repository.existsBySlugAndIdNot(newSlug, id)) {
-            throw new ConflictException("Produto com este nome já existe");
+        String newSlug = existing.getSlug();
+        if (hasText(dto != null ? dto.getName() : null)) {
+            newSlug = generateUniqueSlug(buildSlugFromName(dto.getName()), id);
         }
 
-        mapper.updateEntityFromDto(dto, existing);
+        mapper.applyPartialUpdate(dto, existing);
         existing.setSlug(newSlug);
 
         Product saved = repository.save(existing);
@@ -186,6 +183,36 @@ public class ProductService {
 
         Product saved = repository.save(existing);
         return mapper.toResponse(saved);
+    }
+
+    private String buildSlugFromName(String productName) {
+        String resolvedName = hasText(productName) ? productName.trim() : DEFAULT_NAME;
+        String slug = SlugUtil.slugify(resolvedName);
+        return hasText(slug) ? slug : DEFAULT_SLUG;
+    }
+
+    private String generateUniqueSlug(String baseSlug, Long currentProductId) {
+        String candidate = baseSlug;
+        int suffix = 2;
+
+        while (slugExistsForAnotherProduct(candidate, currentProductId)) {
+            candidate = baseSlug + "-" + suffix;
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    private boolean slugExistsForAnotherProduct(String slug, Long currentProductId) {
+        if (currentProductId == null) {
+            return repository.existsBySlug(slug);
+        }
+
+        return repository.existsBySlugAndIdNot(slug, currentProductId);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
 }
