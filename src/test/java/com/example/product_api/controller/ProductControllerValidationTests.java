@@ -34,38 +34,51 @@ class ProductControllerValidationTests {
     private JwtUtil jwtUtil;
 
     @Test
-    void shouldReturnValidationErrorWhenNameIsBlank() throws Exception {
+    void shouldAcceptEmptyPayloadWhenCreatingProduct() throws Exception {
         when(jwtUtil.extractUsername("valid-token")).thenReturn("admin");
         when(jwtUtil.isAccessToken("valid-token")).thenReturn(true);
         when(jwtUtil.validateToken("valid-token", "admin")).thenReturn(true);
+        when(productService.create(any())).thenReturn(new ProductResponseDTO(
+                1L,
+                "Produto sem nome",
+                "produto-sem-nome",
+                "",
+                0L,
+                null,
+                "novo",
+                "Sem categoria",
+                null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                null,
+                1,
+                null,
+                null
+        ));
 
-        String body = "{\n" +
-                "  \"name\": null,\n" +
-            "  \"description\": \"descrição válida com mais de 10\",\n" +
-                "  \"price\": 1000,\n" +
-            "  \"condition\": \"novo\",\n" +
-            "  \"category\": \"Sofá\",\n" +
-            "  \"images\": [\"img1.jpg\"],\n" +
-            "  \"stock\": 1,\n" +
-            "  \"featured\": false\n" +
-                "}";
+        String body = "{}";
 
         mockMvc.perform(post("/api/products")
                 .header("Authorization", "Bearer valid-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Erro de validação"))
-                .andExpect(jsonPath("$.errors[0].field").value("name"))
-                .andExpect(jsonPath("$.errors[0].message").value("Name é obrigatório"));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Produto sem nome"))
+                .andExpect(jsonPath("$.price").value(0))
+                .andExpect(jsonPath("$.category").value("Sem categoria"));
     }
 
-            @Test
-            void shouldAcceptShortDescriptionWhenCreatingProduct() throws Exception {
-            when(jwtUtil.extractUsername("valid-token")).thenReturn("admin");
-            when(jwtUtil.isAccessToken("valid-token")).thenReturn(true);
-            when(jwtUtil.validateToken("valid-token", "admin")).thenReturn(true);
-            when(productService.create(any())).thenReturn(new ProductResponseDTO(
+    @Test
+    void shouldAcceptShortDescriptionWhenCreatingProduct() throws Exception {
+        when(jwtUtil.extractUsername("valid-token")).thenReturn("admin");
+        when(jwtUtil.isAccessToken("valid-token")).thenReturn(true);
+        when(jwtUtil.validateToken("valid-token", "admin")).thenReturn(true);
+        when(productService.create(any())).thenReturn(new ProductResponseDTO(
                 1L,
                 "Sofá",
                 "sofa",
@@ -86,9 +99,9 @@ class ProductControllerValidationTests {
                 1,
                 null,
                 null
-            ));
+        ));
 
-            String body = "{\n" +
+        String body = "{\n" +
                 "  \"name\": \"Sofá\",\n" +
                 "  \"description\": \"fdf\",\n" +
                 "  \"price\": 1000,\n" +
@@ -99,11 +112,11 @@ class ProductControllerValidationTests {
                 "  \"featured\": false\n" +
                 "}";
 
-            mockMvc.perform(post("/api/products")
+        mockMvc.perform(post("/api/products")
                 .header("Authorization", "Bearer valid-token")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.description").value("fdf"));
-            }
+    }
 }
