@@ -56,8 +56,15 @@ public class PushNotificationService {
     public void saveSubscription(PushSubscriptionRequestDTO dto) {
         String endpoint = normalizeEndpoint(dto.getEndpoint());
         if (endpoint == null) {
+            logger.warn("Push subscription rejected: missing endpoint");
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endpoint e obrigatorio");
         }
+
+        logger.info("Saving push subscription: endpointHash={}, hasP256dh={}, hasAuth={}, expirationTime={}",
+                maskEndpoint(endpoint),
+                dto.getKeys() != null && dto.getKeys().getP256dh() != null && !dto.getKeys().getP256dh().isBlank(),
+                dto.getKeys() != null && dto.getKeys().getAuth() != null && !dto.getKeys().getAuth().isBlank(),
+                dto.getExpirationTime());
 
         PushSubscription subscription = pushSubscriptionRepository.findByEndpoint(endpoint)
             .orElseGet(PushSubscription::new);
@@ -68,15 +75,22 @@ public class PushNotificationService {
         subscription.setExpirationTime(dto.getExpirationTime());
 
         pushSubscriptionRepository.save(subscription);
+        logger.info("Push subscription saved successfully: endpointHash={}, totalSubscriptions={}",
+                maskEndpoint(endpoint),
+                pushSubscriptionRepository.count());
     }
 
     public void deleteSubscription(String endpoint) {
         String normalizedEndpoint = normalizeEndpoint(endpoint);
         if (normalizedEndpoint == null) {
+            logger.warn("Push subscription delete rejected: missing endpoint");
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endpoint e obrigatorio");
         }
 
         pushSubscriptionRepository.deleteByEndpoint(normalizedEndpoint);
+        logger.info("Push subscription deleted: endpointHash={}, totalSubscriptions={}",
+                maskEndpoint(normalizedEndpoint),
+                pushSubscriptionRepository.count());
     }
 
     public void notifyNewProduct(Product product) {

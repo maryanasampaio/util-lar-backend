@@ -2,6 +2,8 @@ package com.example.product_api.controller;
 
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +28,8 @@ import lombok.AllArgsConstructor;
 @RequestMapping({"/api/notification-preferences", "/notification-preferences"})
 public class NotificationPreferencesController {
 
+    private static final Logger logger = LoggerFactory.getLogger(NotificationPreferencesController.class);
+
     private final NotificationPreferenceService notificationPreferenceService;
     private final PushNotificationService pushNotificationService;
 
@@ -37,6 +41,9 @@ public class NotificationPreferencesController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> savePreferences(
             @Valid @RequestBody NotificationPreferencesRequestDTO dto) {
+        logger.info("Notification preferences POST received: whatsappEnabled={}, hasWhatsappPhone={}",
+            dto != null ? dto.getWhatsappEnabled() : null,
+            dto != null && dto.getWhatsappPhone() != null && !dto.getWhatsappPhone().isBlank());
         notificationPreferenceService.savePreferences(dto);
 
         return ResponseEntity.ok(Map.of(
@@ -48,6 +55,9 @@ public class NotificationPreferencesController {
     @PutMapping
     public ResponseEntity<Map<String, Object>> updatePreferences(
             @Valid @RequestBody NotificationPreferencesRequestDTO dto) {
+        logger.info("Notification preferences PUT received: whatsappEnabled={}, hasWhatsappPhone={}",
+            dto != null ? dto.getWhatsappEnabled() : null,
+            dto != null && dto.getWhatsappPhone() != null && !dto.getWhatsappPhone().isBlank());
         notificationPreferenceService.savePreferences(dto);
 
         return ResponseEntity.ok(Map.of(
@@ -58,6 +68,8 @@ public class NotificationPreferencesController {
 
     @DeleteMapping
     public ResponseEntity<Map<String, Object>> deletePreferences(@RequestParam String whatsappPhone) {
+        logger.info("Notification preferences DELETE received: hasWhatsappPhone={}",
+            whatsappPhone != null && !whatsappPhone.isBlank());
         notificationPreferenceService.deletePreferences(whatsappPhone);
 
         return ResponseEntity.ok(Map.of(
@@ -69,6 +81,11 @@ public class NotificationPreferencesController {
     @PostMapping("/push-subscription")
     public ResponseEntity<Map<String, Object>> savePushSubscription(
             @Valid @RequestBody PushSubscriptionRequestDTO dto) {
+        logger.info("Push subscription POST received: hasEndpoint={}, hasP256dh={}, hasAuth={}, expirationTime={}",
+            dto != null && dto.getEndpoint() != null && !dto.getEndpoint().isBlank(),
+            dto != null && dto.getKeys() != null && dto.getKeys().getP256dh() != null && !dto.getKeys().getP256dh().isBlank(),
+            dto != null && dto.getKeys() != null && dto.getKeys().getAuth() != null && !dto.getKeys().getAuth().isBlank(),
+            dto != null ? dto.getExpirationTime() : null);
         pushNotificationService.saveSubscription(dto);
 
         return ResponseEntity.ok(Map.of(
@@ -79,6 +96,7 @@ public class NotificationPreferencesController {
 
     @DeleteMapping("/push-subscription")
     public ResponseEntity<Map<String, Object>> deletePushSubscription(@RequestParam String endpoint) {
+        logger.info("Push subscription DELETE received: hasEndpoint={}", endpoint != null && !endpoint.isBlank());
         pushNotificationService.deleteSubscription(endpoint);
 
         return ResponseEntity.ok(Map.of(
