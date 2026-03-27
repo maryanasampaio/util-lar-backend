@@ -300,6 +300,7 @@ public class WhatsAppNotificationService {
         variables.put("2", formatCurrency(product != null ? product.getPrice() : null));
         variables.put("3", safe(product != null ? product.getCategory() : null));
         variables.put("4", buildProductUrl(product));
+        variables.put("5", buildProductSlug(product));
         return variables;
     }
 
@@ -310,6 +311,7 @@ public class WhatsAppNotificationService {
         variables.put("3", formatCurrency(product != null ? product.getPrice() : null));
         variables.put("4", safe(product != null ? product.getCategory() : null));
         variables.put("5", buildProductUrl(product));
+        variables.put("6", buildProductSlug(product));
         return variables;
     }
 
@@ -324,6 +326,14 @@ public class WhatsAppNotificationService {
         }
 
         return normalizedFrontendUrl + "/produtos/" + product.getSlug();
+    }
+
+    private String buildProductSlug(Product product) {
+        if (product == null || !notBlank(product.getSlug())) {
+            return "";
+        }
+
+        return product.getSlug().trim();
     }
 
     private boolean hasTemplate(String contentSid) {

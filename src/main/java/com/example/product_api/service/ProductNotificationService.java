@@ -17,11 +17,14 @@ public class ProductNotificationService {
 
     private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final WhatsAppNotificationService whatsAppNotificationService;
+    private final PushNotificationService pushNotificationService;
 
     public ProductNotificationService(NotificationPreferenceRepository notificationPreferenceRepository,
-                                      WhatsAppNotificationService whatsAppNotificationService) {
+                                      WhatsAppNotificationService whatsAppNotificationService,
+                                      PushNotificationService pushNotificationService) {
         this.notificationPreferenceRepository = notificationPreferenceRepository;
         this.whatsAppNotificationService = whatsAppNotificationService;
+        this.pushNotificationService = pushNotificationService;
     }
 
     @Async
@@ -38,6 +41,7 @@ public class ProductNotificationService {
                     recipients != null ? recipients.size() : 0);
 
             whatsAppNotificationService.notifyNewProduct(product, recipients);
+                pushNotificationService.notifyNewProduct(product);
         } catch (Exception ex) {
             logger.error("Product notification flow failed: productId={}, slug={}, error={}",
                     product != null ? product.getId() : null,
@@ -63,6 +67,7 @@ public class ProductNotificationService {
                     recipients != null ? recipients.size() : 0);
 
             whatsAppNotificationService.notifyPriceUpdated(product, previousPrice, recipients);
+                pushNotificationService.notifyPriceUpdated(product, previousPrice);
         } catch (Exception ex) {
             logger.error("Product price update notification flow failed: productId={}, slug={}, error={}",
                     product != null ? product.getId() : null,
