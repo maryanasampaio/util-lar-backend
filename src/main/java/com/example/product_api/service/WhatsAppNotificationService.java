@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twilio.Twilio;
 import com.twilio.rest.api.v2010.account.Message;
+import com.twilio.rest.api.v2010.account.MessageCreator;
 import com.twilio.type.PhoneNumber;
 
 @Service
@@ -43,6 +44,9 @@ public class WhatsAppNotificationService {
 
     @Value("${twilio.whatsapp.price-update-content-sid:}")
     private String priceUpdateContentSid;
+
+    @Value("${twilio.whatsapp.status-callback-url:}")
+    private String statusCallbackUrl;
 
     @Value("${app.frontend-url:http://localhost:4200}")
     private String frontendUrl;
@@ -89,14 +93,15 @@ public class WhatsAppNotificationService {
 
         for (String recipient : recipients) {
             try {
-                    String sid = useTemplate
-                        ? sendContentTemplate(recipient, newProductContentSid, buildNewProductTemplateVariables(product))
-                        : sendMessage(recipient, message, mediaUrl);
-                logger.info("WhatsApp message sent successfully: productId={}, slug={}, recipient={}, sid={}",
+                MessageDispatchResult result = useTemplate
+                    ? sendContentTemplate(recipient, newProductContentSid, buildNewProductTemplateVariables(product))
+                    : sendMessage(recipient, message, mediaUrl);
+                logger.info("WhatsApp message accepted by Twilio: productId={}, slug={}, recipient={}, sid={}, initialStatus={}",
                         product != null ? product.getId() : null,
                         product != null ? product.getSlug() : null,
                         maskPhone(recipient),
-                        sid);
+                        result.sid(),
+                        result.status());
             } catch (Exception ex) {
                 logger.error("WhatsApp message failed: productId={}, slug={}, recipient={}, error={}",
                         product != null ? product.getId() : null,
@@ -143,14 +148,15 @@ public class WhatsAppNotificationService {
 
         for (String recipient : recipients) {
             try {
-                    String sid = useTemplate
-                        ? sendContentTemplate(recipient, priceUpdateContentSid, buildPriceUpdatedTemplateVariables(product, previousPrice))
-                        : sendMessage(recipient, message, null);
-                logger.info("WhatsApp price update message sent successfully: productId={}, slug={}, recipient={}, sid={}",
+                MessageDispatchResult result = useTemplate
+                    ? sendContentTemplate(recipient, priceUpdateContentSid, buildPriceUpdatedTemplateVariables(product, previousPrice))
+                    : sendMessage(recipient, message, null);
+                logger.info("WhatsApp price update message accepted by Twilio: productId={}, slug={}, recipient={}, sid={}, initialStatus={}",
                         product != null ? product.getId() : null,
                         product != null ? product.getSlug() : null,
                         maskPhone(recipient),
-                        sid);
+                        result.sid(),
+                        result.status());
             } catch (Exception ex) {
                 logger.error("WhatsApp price update message failed: productId={}, slug={}, recipient={}, error={}",
                         product != null ? product.getId() : null,
@@ -167,14 +173,14 @@ public class WhatsAppNotificationService {
     }
 
     public String sendTestMessage(String phoneNumber) {
-        return sendMessage(phoneNumber, "Teste de notificacao WhatsApp configurado com sucesso.", null);
+        return sendMessage(phoneNumber, "Teste de notificacao WhatsApp configurado com sucesso.", null).sid();
     }
 
-    public String sendMessage(String phoneNumber, String message) {
+    public MessageDispatchResult sendMessage(String phoneNumber, String message) {
         return sendMessage(phoneNumber, message, null);
     }
 
-    public String sendMessage(String phoneNumber, String message, String mediaUrl) {
+    public MessageDispatchResult sendMessage(String phoneNumber, String message, String mediaUrl) {
         if (!isConfigured()) {
             throw new RuntimeException("Twilio nao configurado. Defina TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN.");
         }
@@ -199,12 +205,14 @@ public class WhatsAppNotificationService {
             creator.setMediaUrl(List.of(URI.create(mediaUrl)));
         }
 
+        applyStatusCallback(creator);
+
         Message twilioMessage = creator.create();
 
-        return twilioMessage.getSid();
+        return toDispatchResult(twilioMessage);
     }
 
-    public String sendContentTemplate(String phoneNumber, String contentSid, Map<String, String> variables) {
+    public MessageDispatchResult sendContentTemplate(String phoneNumber, String contentSid, Map<String, String> variables) {
         if (!isConfigured()) {
             throw new RuntimeException("Twilio nao configurado. Defina TWILIO_ACCOUNT_SID e TWILIO_AUTH_TOKEN.");
         }
@@ -233,8 +241,40 @@ public class WhatsAppNotificationService {
             creator.setMessagingServiceSid(messagingServiceSid);
         }
 
+        applyStatusCallback(creator);
+
         Message twilioMessage = creator.create();
-        return twilioMessage.getSid();
+        return toDispatchResult(twilioMessage);
+    }
+
+    public void handleStatusCallback(String messageSid, String messageStatus, String to, String errorCode, String errorMessage) {
+        String normalizedStatus = safe(messageStatus);
+        if ("delivered".equalsIgnoreCase(normalizedStatus)
+                || "read".equalsIgnoreCase(normalizedStatus)
+                || "sent".equalsIgnoreCase(normalizedStatus)) {
+            logger.info("Twilio WhatsApp delivery status: sid={}, status={}, recipient={}",
+                    safe(messageSid),
+                    normalizedStatus,
+                    maskPhone(to));
+            return;
+        }
+
+        if ("failed".equalsIgnoreCase(normalizedStatus)
+                || "undelivered".equalsIgnoreCase(normalizedStatus)) {
+            logger.warn("Twilio WhatsApp delivery failed: sid={}, status={}, recipient={}, errorCode={}, errorMessage={}",
+                    safe(messageSid),
+                    normalizedStatus,
+                    maskPhone(to),
+                    safe(errorCode),
+                    safe(errorMessage));
+            return;
+        }
+
+        logger.info("Twilio WhatsApp status callback received: sid={}, status={}, recipient={}, errorCode={}",
+                safe(messageSid),
+                normalizedStatus,
+                maskPhone(to),
+                safe(errorCode));
     }
 
     public String formatNewProductMessage(Product product) {
@@ -342,6 +382,17 @@ public class WhatsAppNotificationService {
         }
     }
 
+    private void applyStatusCallback(MessageCreator creator) {
+        if (notBlank(statusCallbackUrl)) {
+            creator.setStatusCallback(URI.create(statusCallbackUrl.trim()));
+        }
+    }
+
+    private MessageDispatchResult toDispatchResult(Message twilioMessage) {
+        String status = twilioMessage.getStatus() == null ? "unknown" : twilioMessage.getStatus().toString();
+        return new MessageDispatchResult(twilioMessage.getSid(), status);
+    }
+
     private boolean isConfigured() {
         return notBlank(accountSid) && notBlank(authToken);
     }
@@ -387,5 +438,8 @@ public class WhatsAppNotificationService {
         }
 
         return sid.substring(0, 4) + "..." + sid.substring(sid.length() - 2);
+    }
+
+    public record MessageDispatchResult(String sid, String status) {
     }
 }

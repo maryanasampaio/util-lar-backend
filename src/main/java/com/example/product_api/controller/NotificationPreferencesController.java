@@ -27,7 +27,7 @@ public class NotificationPreferencesController {
     private final NotificationPreferenceService notificationPreferenceService;
 
     @GetMapping
-    public NotificationPreferencesResponseDTO getPreferences(@RequestParam String whatsappPhone) {
+    public NotificationPreferencesResponseDTO getPreferences(@RequestParam(required = false) String whatsappPhone) {
         return notificationPreferenceService.getPreferences(whatsappPhone);
     }
 
