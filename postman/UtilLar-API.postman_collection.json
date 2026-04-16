@@ -1,0 +1,217 @@
+{
+  "info": {
+    "name": "Util Lar API",
+    "_postman_id": "4f2f6e6b-3a5e-48b8-9f9f-2de7b65f6f01",
+    "description": "Collection com os 6 endpoints essenciais da API de produtos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Login admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"123456\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/login",
+          "host": [
+            "{{authBaseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. Listar produtos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/products",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Buscar produto por ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/products/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products",
+            "1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Criar produto",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Sofá de Teste\",\n  \"description\": \"Descrição de teste com mais de 10 caracteres\",\n  \"price\": 100000,\n  \"costPrice\": 70000,\n  \"condition\": \"novo\",\n  \"category\": \"Sofá\",\n  \"images\": [\"https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800\"],\n  \"stock\": 5,\n  \"dimensions\": {\n    \"width\": 220,\n    \"height\": 85,\n    \"depth\": 95,\n    \"unit\": \"cm\"\n  },\n  \"material\": \"Tecido\",\n  \"color\": \"Cinza\",\n  \"brand\": \"Util Lar\",\n  \"warranty\": \"90 dias\",\n  \"featured\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products"
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Atualizar produto",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Sofá de Teste Atualizado\",\n  \"description\": \"Descrição atualizada com mais de 10 caracteres\",\n  \"price\": 109900,\n  \"costPrice\": 75000,\n  \"condition\": \"novo\",\n  \"category\": \"Sofá\",\n  \"images\": [\"https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800\"],\n  \"stock\": 3,\n  \"dimensions\": {\n    \"width\": 220,\n    \"height\": 85,\n    \"depth\": 95,\n    \"unit\": \"cm\"\n  },\n  \"material\": \"Tecido\",\n  \"color\": \"Cinza\",\n  \"brand\": \"Util Lar\",\n  \"warranty\": \"90 dias\",\n  \"featured\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products",
+            "1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Remover produto",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/products/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products",
+            "1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Marcar como vendido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/products/1/sold",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "products",
+            "1",
+            "sold"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api"
+    },
+    {
+      "key": "authBaseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ]
+}

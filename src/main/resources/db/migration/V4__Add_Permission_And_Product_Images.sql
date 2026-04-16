@@ -1,0 +1,6 @@
+
+ALTER TABLE tb_usuario 
+    ADD COLUMN permission VARCHAR(50) NOT NULL DEFAULT 'USER';
+
+ALTER TABLE tb_produto 
+    ADD COLUMN images VARCHAR(2000);

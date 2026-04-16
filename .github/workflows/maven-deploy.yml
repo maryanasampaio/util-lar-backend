@@ -1,0 +1,31 @@
+name: Deploy Java Maven
+
+on:
+  push:
+    branches: [ "hmg" ]
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: util-lar
+  FILE_NAME: product-api-0.0.1-deploy.jar
+
+jobs:
+  build:
+    uses: ./.github/workflows/maven-build.yml
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'hmg' }}
+    steps:
+      - name: Configure SSH keys
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SSH_IP }} >> ~/.ssh/known_hosts
+
+      - name: Upload File SCP
+        run: |
+          scp -i ~/.ssh/id_ed25519 ./target/${FILE_NAME} root@${{ secrets.SSH_IP }}:${{ vars.DEST_DIR }} && \
+          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.SSH_IP}} service spring@${SERVICE_NAME} restart
