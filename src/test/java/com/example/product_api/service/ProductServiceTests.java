@@ -54,6 +54,7 @@ class ProductServiceTests {
         assertEquals("Produto sem nome", response.getName());
         assertEquals("produto-sem-nome", response.getSlug());
         assertEquals(0L, response.getPrice());
+        assertEquals(null, response.getOriginalPrice());
         assertEquals("novo", response.getCondition());
         assertEquals("Sem categoria", response.getCategory());
         assertEquals(0, response.getStock());
@@ -124,7 +125,23 @@ class ProductServiceTests {
         assertEquals("Mesa de jantar", response.getName());
         assertEquals("mesa-de-jantar", response.getSlug());
         assertEquals(129900L, response.getPrice());
+        assertEquals(159900L, response.getOriginalPrice());
         assertEquals("Mesas", response.getCategory());
+        verify(productNotificationService, never()).notifyPriceUpdated(any(Product.class), any(Long.class));
+    }
+
+    @Test
+    void shouldAllowClearingOriginalPriceOnUpdate() {
+        Product existing = existingProduct();
+        ProductRequestDTO request = new ProductRequestDTO();
+        request.setOriginalPrice(null);
+
+        when(productRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProductResponseDTO response = productService.update(1L, request);
+
+        assertEquals(null, response.getOriginalPrice());
         verify(productNotificationService, never()).notifyPriceUpdated(any(Product.class), any(Long.class));
     }
 
@@ -152,6 +169,7 @@ class ProductServiceTests {
         product.setSlug("mesa-de-jantar");
         product.setDescription("Mesa em madeira macica");
         product.setPrice(129900L);
+        product.setOriginalPrice(159900L);
         product.setCostPrice(99900L);
         product.setCondition("novo");
         product.setCategory("Mesas");
@@ -171,6 +189,7 @@ class ProductServiceTests {
                 "Mesa de jantar",
                 "Mesa em madeira macica",
                 price,
+            159900L,
                 99900L,
                 "novo",
                 "Mesas",

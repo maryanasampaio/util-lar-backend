@@ -40,6 +40,9 @@ public class Product {
     @Column(nullable = false)
     private Long price;
 
+    @Column(name = "original_price")
+    private Long originalPrice;
+
     @Column(name = "cost_price")
     private Long costPrice;
 

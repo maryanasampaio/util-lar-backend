@@ -3,17 +3,17 @@ package com.example.product_api.dto.ProductDTO;
 import java.util.List;
 
 import com.example.product_api.model.ProductDimensions;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class ProductRequestDTO {
 
     @Size(max = 200, message = "Name deve ter no maximo 200 caracteres")
@@ -23,6 +23,9 @@ public class ProductRequestDTO {
 
     @PositiveOrZero(message = "Price deve ser inteiro positivo em centavos")
     private Long price; // centavos
+
+    @PositiveOrZero(message = "OriginalPrice deve ser inteiro positivo em centavos")
+    private Long originalPrice;
 
     @PositiveOrZero(message = "CostPrice deve ser inteiro positivo em centavos")
     private Long costPrice;
@@ -45,4 +48,47 @@ public class ProductRequestDTO {
     private String warranty;
 
     private Boolean featured;
+
+    @JsonIgnore
+    private boolean originalPriceDefined;
+
+    public ProductRequestDTO(
+            String name,
+            String description,
+            Long price,
+            Long originalPrice,
+            Long costPrice,
+            String condition,
+            String category,
+            List<String> images,
+            Integer stock,
+            ProductDimensions dimensions,
+            String material,
+            String color,
+            String brand,
+            String warranty,
+            Boolean featured) {
+        this.name = name;
+        this.description = description;
+        this.price = price;
+        this.originalPrice = originalPrice;
+        this.originalPriceDefined = true;
+        this.costPrice = costPrice;
+        this.condition = condition;
+        this.category = category;
+        this.images = images;
+        this.stock = stock;
+        this.dimensions = dimensions;
+        this.material = material;
+        this.color = color;
+        this.brand = brand;
+        this.warranty = warranty;
+        this.featured = featured;
+    }
+
+    @JsonSetter("originalPrice")
+    public void setOriginalPrice(Long originalPrice) {
+        this.originalPrice = originalPrice;
+        this.originalPriceDefined = true;
+    }
 }

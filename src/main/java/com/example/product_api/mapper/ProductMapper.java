@@ -20,6 +20,7 @@ public class ProductMapper {
         dto.setSlug(product.getSlug());
         dto.setDescription(product.getDescription());
         dto.setPrice(product.getPrice());
+        dto.setOriginalPrice(product.getOriginalPrice());
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
@@ -42,6 +43,7 @@ public class ProductMapper {
         product.setName(defaultIfBlank(dto != null ? dto.getName() : null, DEFAULT_NAME));
         product.setDescription(dto != null && dto.getDescription() != null ? dto.getDescription() : DEFAULT_DESCRIPTION);
         product.setPrice(dto != null && dto.getPrice() != null ? dto.getPrice() : 0L);
+        product.setOriginalPrice(dto != null ? dto.getOriginalPrice() : null);
         product.setCostPrice(dto != null ? dto.getCostPrice() : null);
         product.setCondition(defaultIfBlank(dto != null ? dto.getCondition() : null, DEFAULT_CONDITION));
         product.setCategory(defaultIfBlank(dto != null ? dto.getCategory() : null, DEFAULT_CATEGORY));
@@ -68,6 +70,9 @@ public class ProductMapper {
         }
         if (dto.getPrice() != null) {
             product.setPrice(dto.getPrice());
+        }
+        if (dto.isOriginalPriceDefined()) {
+            product.setOriginalPrice(dto.getOriginalPrice());
         }
         if (dto.getCostPrice() != null) {
             product.setCostPrice(dto.getCostPrice());

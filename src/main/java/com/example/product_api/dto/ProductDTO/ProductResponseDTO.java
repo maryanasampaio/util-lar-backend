@@ -20,6 +20,7 @@ public class ProductResponseDTO {
     private String slug;
     private String description;
     private Long price;
+    private Long originalPrice;
     private Long costPrice;
     private String condition;
     private String category;
@@ -43,6 +44,7 @@ public class ProductResponseDTO {
         dto.setSlug(p.getSlug());
         dto.setDescription(p.getDescription());
         dto.setPrice(p.getPrice());
+        dto.setOriginalPrice(p.getOriginalPrice());
         dto.setCostPrice(p.getCostPrice());
         dto.setCondition(p.getCondition());
         dto.setCategory(p.getCategory());
