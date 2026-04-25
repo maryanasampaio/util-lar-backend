@@ -1,6 +1,7 @@
 package com.example.product_api.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -9,6 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,6 +33,8 @@ public class ProductService {
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
     private static final String DEFAULT_NAME = "Produto sem nome";
     private static final String DEFAULT_SLUG = "produto-sem-nome";
+    private static final int FIND_ALL_PAGE_SIZE = 100;
+    private static final int MAX_INLINE_IMAGE_LENGTH = 16_384;
 
     @Autowired
     private final ProductRepository repository;
@@ -64,10 +70,20 @@ public class ProductService {
             spec = spec.and((root, query, cb) -> cb.isNull(root.get("soldDate")));
         }
 
-        return repository.findAll(spec)
-            .stream()
-            .map(mapper::toResponse)
-            .collect(Collectors.toList());
+        List<ProductResponseDTO> products = new ArrayList<>();
+        Pageable pageable = PageRequest.of(0, FIND_ALL_PAGE_SIZE);
+        Page<Product> page;
+
+        do {
+            page = repository.findAll(spec, pageable);
+            page.getContent().stream()
+                    .map(mapper::toResponse)
+                    .map(this::sanitizeListResponse)
+                    .forEach(products::add);
+            pageable = page.nextPageable();
+        } while (page.hasNext());
+
+        return products;
     }
 
     public ProductResponseDTO findById(Long id) {
@@ -213,6 +229,32 @@ public class ProductService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private ProductResponseDTO sanitizeListResponse(ProductResponseDTO dto) {
+        if (dto == null || dto.getImages() == null || dto.getImages().isEmpty()) {
+            return dto;
+        }
+
+        List<String> sanitizedImages = dto.getImages().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(image -> !image.isBlank())
+                .filter(this::shouldKeepListImage)
+                .collect(Collectors.toList());
+
+        if (sanitizedImages.size() != dto.getImages().size()) {
+            logger.warn("Large inline images omitted from product listing response: id={}, slug={}",
+                    dto.getId(),
+                    dto.getSlug());
+        }
+
+        dto.setImages(sanitizedImages.isEmpty() ? null : sanitizedImages);
+        return dto;
+    }
+
+    private boolean shouldKeepListImage(String image) {
+        return !image.startsWith("data:image/") || image.length() <= MAX_INLINE_IMAGE_LENGTH;
     }
 
 }

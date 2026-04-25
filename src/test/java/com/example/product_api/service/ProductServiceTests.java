@@ -15,6 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
@@ -79,6 +83,20 @@ class ProductServiceTests {
         assertEquals("Mesa de jantar", response.getName());
         assertEquals("mesa-de-jantar-2", response.getSlug());
         verify(productNotificationService).notifyNewProduct(any(Product.class));
+    }
+
+    @Test
+    void shouldOmitLargeInlineImagesFromListing() {
+        Product existing = existingProduct();
+        existing.setImages(List.of("data:image/png;base64," + "A".repeat(20000), "https://cdn.exemplo.com/mesa.jpg"));
+
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
+
+        List<ProductResponseDTO> response = productService.findAll(null, null, null, null);
+
+        assertEquals(1, response.size());
+        assertEquals(List.of("https://cdn.exemplo.com/mesa.jpg"), response.get(0).getImages());
     }
 
     @Test
