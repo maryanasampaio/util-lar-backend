@@ -1,5 +1,9 @@
 package com.example.product_api.mapper;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Component;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
@@ -12,6 +16,7 @@ public class ProductMapper {
     private static final String DEFAULT_DESCRIPTION = "";
     private static final String DEFAULT_CONDITION = "novo";
     private static final String DEFAULT_CATEGORY = "Sem categoria";
+    private static final int MAX_INLINE_IMAGE_LENGTH = 16_384;
 
     public ProductResponseDTO toResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
@@ -39,7 +44,7 @@ public class ProductMapper {
         return dto;
     }
 
-    /** Mapeamento para listagem: não acessa o campo images (lazy) para evitar OOM. */
+    /** Mapeamento para listagem: acessa images via lazy load individual, filtrando base64 grandes. */
     public ProductResponseDTO toListResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
         dto.setId(product.getId());
@@ -51,7 +56,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        // images não é mapeado aqui — campo LONGTEXT lazy, não carregado na listagem
+        dto.setImages(filterListImages(product.getImages()));
         dto.setStock(product.getStock());
         dto.setDimensions(product.getDimensions());
         dto.setMaterial(product.getMaterial());
@@ -64,6 +69,19 @@ public class ProductMapper {
         dto.setCreatedAt(product.getCreatedAt());
         dto.setUpdatedAt(product.getUpdatedAt());
         return dto;
+    }
+
+    private List<String> filterListImages(List<String> images) {
+        if (images == null || images.isEmpty()) {
+            return images;
+        }
+        List<String> filtered = images.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(img -> !img.isBlank())
+                .filter(img -> !img.startsWith("data:image/") || img.length() <= MAX_INLINE_IMAGE_LENGTH)
+                .collect(Collectors.toList());
+        return filtered.isEmpty() ? null : filtered;
     }
 
     public void populateEntityForCreate(ProductRequestDTO dto, Product product) {

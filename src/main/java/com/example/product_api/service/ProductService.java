@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +33,6 @@ public class ProductService {
     private static final String DEFAULT_NAME = "Produto sem nome";
     private static final String DEFAULT_SLUG = "produto-sem-nome";
     private static final int FIND_ALL_PAGE_SIZE = 100;
-    private static final int MAX_INLINE_IMAGE_LENGTH = 16_384;
 
     @Autowired
     private final ProductRepository repository;
@@ -230,30 +228,5 @@ public class ProductService {
         return value != null && !value.isBlank();
     }
 
-    private ProductResponseDTO sanitizeListResponse(ProductResponseDTO dto) {
-        if (dto == null || dto.getImages() == null || dto.getImages().isEmpty()) {
-            return dto;
-        }
-
-        List<String> sanitizedImages = dto.getImages().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(image -> !image.isBlank())
-                .filter(this::shouldKeepListImage)
-                .collect(Collectors.toList());
-
-        if (sanitizedImages.size() != dto.getImages().size()) {
-            logger.warn("Large inline images omitted from product listing response: id={}, slug={}",
-                    dto.getId(),
-                    dto.getSlug());
-        }
-
-        dto.setImages(sanitizedImages.isEmpty() ? null : sanitizedImages);
-        return dto;
-    }
-
-    private boolean shouldKeepListImage(String image) {
-        return !image.startsWith("data:image/") || image.length() <= MAX_INLINE_IMAGE_LENGTH;
-    }
-
 }
+
