@@ -39,6 +39,33 @@ public class ProductMapper {
         return dto;
     }
 
+    /** Mapeamento para listagem: não acessa o campo images (lazy) para evitar OOM. */
+    public ProductResponseDTO toListResponse(Product product) {
+        ProductResponseDTO dto = new ProductResponseDTO();
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setSlug(product.getSlug());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(product.getPrice());
+        dto.setOriginalPrice(product.getOriginalPrice());
+        dto.setCostPrice(product.getCostPrice());
+        dto.setCondition(product.getCondition());
+        dto.setCategory(product.getCategory());
+        // images não é mapeado aqui — campo LONGTEXT lazy, não carregado na listagem
+        dto.setStock(product.getStock());
+        dto.setDimensions(product.getDimensions());
+        dto.setMaterial(product.getMaterial());
+        dto.setColor(product.getColor());
+        dto.setBrand(product.getBrand());
+        dto.setWarranty(product.getWarranty());
+        dto.setFeatured(product.getFeatured());
+        dto.setSoldDate(product.getSoldDate());
+        dto.setDisponivel(product.getDisponivel());
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+        return dto;
+    }
+
     public void populateEntityForCreate(ProductRequestDTO dto, Product product) {
         product.setName(defaultIfBlank(dto != null ? dto.getName() : null, DEFAULT_NAME));
         product.setDescription(dto != null && dto.getDescription() != null ? dto.getDescription() : DEFAULT_DESCRIPTION);

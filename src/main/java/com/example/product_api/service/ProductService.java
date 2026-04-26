@@ -77,8 +77,7 @@ public class ProductService {
         do {
             page = repository.findAll(spec, pageable);
             page.getContent().stream()
-                    .map(mapper::toResponse)
-                    .map(this::sanitizeListResponse)
+                    .map(mapper::toListResponse)
                     .forEach(products::add);
             pageable = page.nextPageable();
         } while (page.hasNext());
