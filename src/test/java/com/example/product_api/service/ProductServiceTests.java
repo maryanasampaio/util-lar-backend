@@ -86,7 +86,7 @@ class ProductServiceTests {
     }
 
     @Test
-    void shouldOmitLargeInlineImagesFromListing() {
+    void shouldPreserveImagesOnListing() {
         Product existing = existingProduct();
         existing.setImages(List.of("data:image/png;base64," + "A".repeat(20000), "https://cdn.exemplo.com/mesa.jpg"));
 
@@ -96,7 +96,7 @@ class ProductServiceTests {
         List<ProductResponseDTO> response = productService.findAll(null, null, null, null);
 
         assertEquals(1, response.size());
-        assertEquals(List.of("https://cdn.exemplo.com/mesa.jpg"), response.get(0).getImages());
+        assertEquals(existing.getImages(), response.get(0).getImages());
     }
 
     @Test
