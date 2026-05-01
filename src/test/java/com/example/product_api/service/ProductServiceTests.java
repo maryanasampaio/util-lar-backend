@@ -3,6 +3,7 @@ package com.example.product_api.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
@@ -93,10 +95,29 @@ class ProductServiceTests {
         when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
 
-        List<ProductResponseDTO> response = productService.findAll(null, null, null, null);
+        List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 100);
 
         assertEquals(1, response.size());
         assertEquals(existing.getImages(), response.get(0).getImages());
+    }
+
+    @Test
+    void shouldReturnOnlyRequestedPageOnListing() {
+        Product first = existingProduct();
+        Product second = existingProduct();
+        second.setId(2L);
+        second.setSlug("mesa-de-jantar-2");
+
+        Pageable expectedPageable = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        when(productRepository.findAll(any(Specification.class), eq(expectedPageable)))
+                .thenReturn(new PageImpl<>(List.of(first), expectedPageable, 2));
+
+        List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 1);
+
+        assertEquals(1, response.size());
+        assertEquals(first.getId(), response.get(0).getId());
+        verify(productRepository).findAll(any(Specification.class), eq(expectedPageable));
     }
 
     @Test

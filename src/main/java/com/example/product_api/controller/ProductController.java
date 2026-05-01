@@ -37,8 +37,10 @@ public class ProductController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String condition,
             @RequestParam(required = false) Boolean featured,
-            @RequestParam(required = false) String soldDate) {
-        return service.findAll(category, condition, featured, soldDate);
+            @RequestParam(required = false) String soldDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return service.findAll(category, condition, featured, soldDate, page, size);
     }
 
     @GetMapping("/{id}")

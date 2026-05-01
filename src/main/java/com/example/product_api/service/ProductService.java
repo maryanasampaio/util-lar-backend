@@ -1,7 +1,6 @@
 package com.example.product_api.service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -12,6 +11,7 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,7 +32,9 @@ public class ProductService {
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
     private static final String DEFAULT_NAME = "Produto sem nome";
     private static final String DEFAULT_SLUG = "produto-sem-nome";
-    private static final int FIND_ALL_PAGE_SIZE = 100;
+    private static final int DEFAULT_LIST_PAGE = 0;
+    private static final int DEFAULT_LIST_PAGE_SIZE = 24;
+    private static final int MAX_LIST_PAGE_SIZE = 100;
 
     @Autowired
     private final ProductRepository repository;
@@ -49,7 +51,12 @@ public class ProductService {
         this.productNotificationService = productNotificationService;
     }
 
-    public List<ProductResponseDTO> findAll(String category, String condition, Boolean featured, String soldDate){
+    public List<ProductResponseDTO> findAll(String category,
+                                            String condition,
+                                            Boolean featured,
+                                            String soldDate,
+                                            Integer page,
+                                            Integer size){
         Specification<Product> spec = Specification.where(null);
 
         if (category != null && !category.isBlank()) {
@@ -68,19 +75,15 @@ public class ProductService {
             spec = spec.and((root, query, cb) -> cb.isNull(root.get("soldDate")));
         }
 
-        List<ProductResponseDTO> products = new ArrayList<>();
-        Pageable pageable = PageRequest.of(0, FIND_ALL_PAGE_SIZE);
-        Page<Product> page;
+        int resolvedPage = page != null && page >= 0 ? page : DEFAULT_LIST_PAGE;
+        int resolvedSize = size != null ? Math.min(Math.max(size, 1), MAX_LIST_PAGE_SIZE) : DEFAULT_LIST_PAGE_SIZE;
 
-        do {
-            page = repository.findAll(spec, pageable);
-            page.getContent().stream()
-                    .map(mapper::toListResponse)
-                    .forEach(products::add);
-            pageable = page.nextPageable();
-        } while (page.hasNext());
+        Pageable pageable = PageRequest.of(resolvedPage, resolvedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Product> productPage = repository.findAll(spec, pageable);
 
-        return products;
+        return productPage.getContent().stream()
+            .map(mapper::toListResponse)
+            .toList();
     }
 
     public ProductResponseDTO findById(Long id) {
