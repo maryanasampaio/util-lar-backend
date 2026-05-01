@@ -88,9 +88,11 @@ class ProductServiceTests {
     }
 
     @Test
-    void shouldPreserveImagesOnListing() {
+    void shouldReturnOnlyFirstImageOnListing() {
         Product existing = existingProduct();
-        existing.setImages(List.of("data:image/png;base64," + "A".repeat(20000), "https://cdn.exemplo.com/mesa.jpg"));
+        String firstImage = "data:image/png;base64," + "A".repeat(20000);
+        String secondImage = "https://cdn.exemplo.com/mesa.jpg";
+        existing.setImages(List.of(firstImage, secondImage));
 
         when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
@@ -98,7 +100,7 @@ class ProductServiceTests {
         List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 100);
 
         assertEquals(1, response.size());
-        assertEquals(existing.getImages(), response.get(0).getImages());
+        assertEquals(List.of(firstImage), response.get(0).getImages());
     }
 
     @Test

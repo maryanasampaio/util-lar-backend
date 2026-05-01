@@ -41,7 +41,7 @@ public class ProductMapper {
         return dto;
     }
 
-    /** Mapeamento para listagem: mantém o mesmo contrato de images do detalhe. */
+    /** Mapeamento para listagem: retorna somente a primeira imagem para reduzir payload e uso de heap. */
     public ProductResponseDTO toListResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
         dto.setId(product.getId());
@@ -53,7 +53,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(product.getImages());
+        dto.setImages(firstImageOnly(product.getImages()));
         dto.setStock(product.getStock());
         dto.setDimensions(product.getDimensions());
         dto.setMaterial(product.getMaterial());
@@ -144,5 +144,19 @@ public class ProductMapper {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private List<String> firstImageOnly(List<String> images) {
+        if (images == null || images.isEmpty()) {
+            return images;
+        }
+
+        for (String image : images) {
+            if (hasText(image)) {
+                return List.of(image);
+            }
+        }
+
+        return List.of();
     }
 }
