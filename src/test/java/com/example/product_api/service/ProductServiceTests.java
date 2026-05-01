@@ -19,13 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.model.Product;
+import com.example.product_api.repository.ProductListProjection;
 import com.example.product_api.repository.ProductRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -89,37 +88,33 @@ class ProductServiceTests {
 
     @Test
     void shouldReturnOnlyFirstImageOnListing() {
-        Product existing = existingProduct();
         String firstImage = "data:image/png;base64," + "A".repeat(20000);
-        String secondImage = "https://cdn.exemplo.com/mesa.jpg";
-        existing.setImages(List.of(firstImage, secondImage));
+        ProductListProjection existing = projection(1L, firstImage, "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}");
 
-        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+        when(productRepository.findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
 
         List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 100);
 
         assertEquals(1, response.size());
         assertEquals(List.of(firstImage), response.get(0).getImages());
+        assertEquals(220, response.get(0).getDimensions().getWidth());
     }
 
     @Test
     void shouldReturnOnlyRequestedPageOnListing() {
-        Product first = existingProduct();
-        Product second = existingProduct();
-        second.setId(2L);
-        second.setSlug("mesa-de-jantar-2");
+        ProductListProjection first = projection(1L, "https://cdn.exemplo.com/mesa.jpg", null);
 
-        Pageable expectedPageable = PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable expectedPageable = PageRequest.of(0, 1);
 
-        when(productRepository.findAll(any(Specification.class), eq(expectedPageable)))
-                .thenReturn(new PageImpl<>(List.of(first), expectedPageable, 2));
+        when(productRepository.findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), eq(expectedPageable)))
+            .thenReturn(new PageImpl<>(List.of(first), expectedPageable, 2));
 
         List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 1);
 
         assertEquals(1, response.size());
         assertEquals(first.getId(), response.get(0).getId());
-        verify(productRepository).findAll(any(Specification.class), eq(expectedPageable));
+        verify(productRepository).findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), eq(expectedPageable));
     }
 
     @Test
@@ -243,5 +238,28 @@ class ProductServiceTests {
                 "12 meses",
                 Boolean.TRUE
         );
+    }
+
+    private ProductListProjection projection(Long id, String firstImage, String dimensionsJson) {
+        ProductListProjection projection = org.mockito.Mockito.mock(ProductListProjection.class);
+        when(projection.getId()).thenReturn(id);
+        when(projection.getName()).thenReturn("Mesa de jantar");
+        when(projection.getSlug()).thenReturn("mesa-de-jantar");
+        when(projection.getDescription()).thenReturn("Mesa em madeira macica");
+        when(projection.getPrice()).thenReturn(129900L);
+        when(projection.getOriginalPrice()).thenReturn(159900L);
+        when(projection.getCostPrice()).thenReturn(99900L);
+        when(projection.getCondition()).thenReturn("novo");
+        when(projection.getCategory()).thenReturn("Mesas");
+        when(projection.getFirstImage()).thenReturn(firstImage);
+        when(projection.getStock()).thenReturn(2);
+        when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
+        when(projection.getMaterial()).thenReturn("Madeira");
+        when(projection.getColor()).thenReturn("Castanho");
+        when(projection.getBrand()).thenReturn("Util Lar");
+        when(projection.getWarranty()).thenReturn("12 meses");
+        when(projection.getFeatured()).thenReturn(Boolean.TRUE);
+        when(projection.getDisponivel()).thenReturn(1);
+        return projection;
     }
 }

@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.model.Product;
+import com.example.product_api.repository.ProductListProjection;
+import com.example.product_api.util.DimensionsJsonConverter;
 
 @Component
 public class ProductMapper {
@@ -14,6 +16,7 @@ public class ProductMapper {
     private static final String DEFAULT_DESCRIPTION = "";
     private static final String DEFAULT_CONDITION = "novo";
     private static final String DEFAULT_CATEGORY = "Sem categoria";
+    private static final DimensionsJsonConverter DIMENSIONS_CONVERTER = new DimensionsJsonConverter();
 
     public ProductResponseDTO toResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
@@ -41,8 +44,8 @@ public class ProductMapper {
         return dto;
     }
 
-    /** Mapeamento para listagem: retorna somente a primeira imagem para reduzir payload e uso de heap. */
-    public ProductResponseDTO toListResponse(Product product) {
+    /** Mapeamento leve para listagem: evita carregar o LONGTEXT completo de images na JVM. */
+    public ProductResponseDTO toListResponse(ProductListProjection product) {
         ProductResponseDTO dto = new ProductResponseDTO();
         dto.setId(product.getId());
         dto.setName(product.getName());
@@ -53,9 +56,9 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(firstImageOnly(product.getImages()));
+        dto.setImages(singleImage(product.getFirstImage()));
         dto.setStock(product.getStock());
-        dto.setDimensions(product.getDimensions());
+        dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());
         dto.setColor(product.getColor());
         dto.setBrand(product.getBrand());
@@ -146,17 +149,11 @@ public class ProductMapper {
         return value != null && !value.isBlank();
     }
 
-    private List<String> firstImageOnly(List<String> images) {
-        if (images == null || images.isEmpty()) {
-            return images;
+    private List<String> singleImage(String image) {
+        if (!hasText(image)) {
+            return null;
         }
 
-        for (String image : images) {
-            if (hasText(image)) {
-                return List.of(image);
-            }
-        }
-
-        return List.of();
+        return List.of(image.trim());
     }
 }

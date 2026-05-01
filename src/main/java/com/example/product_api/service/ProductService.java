@@ -11,8 +11,6 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -57,32 +55,15 @@ public class ProductService {
                                             String soldDate,
                                             Integer page,
                                             Integer size){
-        Specification<Product> spec = Specification.where(null);
-
-        if (category != null && !category.isBlank()) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
-        }
-
-        if (condition != null && !condition.isBlank()) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("condition"), condition));
-        }
-
-        if (featured != null) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("featured"), featured));
-        }
-
-        if ("null".equalsIgnoreCase(soldDate)) {
-            spec = spec.and((root, query, cb) -> cb.isNull(root.get("soldDate")));
-        }
-
         int resolvedPage = page != null && page >= 0 ? page : DEFAULT_LIST_PAGE;
         int resolvedSize = size != null ? Math.min(Math.max(size, 1), MAX_LIST_PAGE_SIZE) : DEFAULT_LIST_PAGE_SIZE;
 
-        Pageable pageable = PageRequest.of(resolvedPage, resolvedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Product> productPage = repository.findAll(spec, pageable);
+        Pageable pageable = PageRequest.of(resolvedPage, resolvedSize);
+        Page<?> productPage = repository.findListPage(category, condition, featured, soldDate, pageable);
 
         return productPage.getContent().stream()
-            .map(mapper::toListResponse)
+                .map(com.example.product_api.repository.ProductListProjection.class::cast)
+                .map(mapper::toListResponse)
             .toList();
     }
 
