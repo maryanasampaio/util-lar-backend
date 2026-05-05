@@ -3,6 +3,11 @@ package com.example.product_api.service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +25,7 @@ import com.example.product_api.dto.ProductDTO.AvailableProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.SoldProductRequestDTO;
 import com.example.product_api.exception.NotFoundException;
 import com.example.product_api.model.Product;
+import com.example.product_api.model.ProductDimensions;
 import com.example.product_api.util.SlugUtil;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.repository.ProductRepository;
@@ -33,6 +39,7 @@ public class ProductService {
     private static final int DEFAULT_LIST_PAGE = 0;
     private static final int DEFAULT_LIST_PAGE_SIZE = 24;
     private static final int MAX_LIST_PAGE_SIZE = 100;
+    private final ConcurrentMap<Integer, CompletableFuture<ProductResponseDTO>> inFlightCreateRequests = new ConcurrentHashMap<>();
 
     @Autowired
     private final ProductRepository repository;
@@ -78,6 +85,28 @@ public class ProductService {
         @CacheEvict(value = "products", allEntries = true)
     })
     public ProductResponseDTO create(ProductRequestDTO dto){
+        int fingerprint = buildCreateFingerprint(dto);
+        CompletableFuture<ProductResponseDTO> inFlight = new CompletableFuture<>();
+        CompletableFuture<ProductResponseDTO> existingRequest = inFlightCreateRequests.putIfAbsent(fingerprint, inFlight);
+
+        if (existingRequest != null) {
+            logger.info("Duplicate create request joined in-flight operation: fingerprint={}", fingerprint);
+            return awaitInFlightCreate(existingRequest);
+        }
+
+        try {
+            ProductResponseDTO response = doCreate(dto);
+            inFlight.complete(response);
+            return response;
+        } catch (RuntimeException ex) {
+            inFlight.completeExceptionally(ex);
+            throw ex;
+        } finally {
+            inFlightCreateRequests.remove(fingerprint, inFlight);
+        }
+    }
+
+    private ProductResponseDTO doCreate(ProductRequestDTO dto) {
         Product p = new Product();
         mapper.populateEntityForCreate(dto, p);
 
@@ -210,6 +239,58 @@ public class ProductService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private ProductResponseDTO awaitInFlightCreate(CompletableFuture<ProductResponseDTO> inFlight) {
+        try {
+            return inFlight.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Criacao de produto interrompida", ex);
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new CompletionException(cause);
+        }
+    }
+
+    private int buildCreateFingerprint(ProductRequestDTO dto) {
+        return Objects.hash(
+                normalize(dto != null ? dto.getName() : null),
+                normalize(dto != null ? dto.getDescription() : null),
+                dto != null ? dto.getPrice() : null,
+                dto != null ? dto.getOriginalPrice() : null,
+                dto != null ? dto.getCostPrice() : null,
+                normalize(dto != null ? dto.getCondition() : null),
+                normalize(dto != null ? dto.getCategory() : null),
+                dto != null && dto.getImages() != null ? dto.getImages().hashCode() : 0,
+                dto != null ? dto.getStock() : null,
+                dimensionsFingerprint(dto != null ? dto.getDimensions() : null),
+                normalize(dto != null ? dto.getMaterial() : null),
+                normalize(dto != null ? dto.getColor() : null),
+                normalize(dto != null ? dto.getBrand() : null),
+                normalize(dto != null ? dto.getWarranty() : null),
+                dto != null ? dto.getFeatured() : null
+        );
+    }
+
+    private int dimensionsFingerprint(ProductDimensions dimensions) {
+        if (dimensions == null) {
+            return 0;
+        }
+
+        return Objects.hash(
+                dimensions.getWidth(),
+                dimensions.getHeight(),
+                dimensions.getDepth(),
+                normalize(dimensions.getUnit())
+        );
+    }
+
+    private String normalize(String value) {
+        return value == null ? null : value.trim();
     }
 
 }

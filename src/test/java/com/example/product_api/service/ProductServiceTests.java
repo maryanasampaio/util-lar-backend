@@ -1,15 +1,24 @@
 package com.example.product_api.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +93,44 @@ class ProductServiceTests {
         assertEquals("Mesa de jantar", response.getName());
         assertEquals("mesa-de-jantar-2", response.getSlug());
         verify(productNotificationService).notifyNewProduct(any(Product.class));
+    }
+
+    @Test
+    void shouldDeduplicateConcurrentCreateRequestsWithSamePayload() throws Exception {
+        ProductRequestDTO request = updateRequest(159900L);
+        CountDownLatch saveStarted = new CountDownLatch(1);
+        CountDownLatch releaseSave = new CountDownLatch(1);
+        AtomicInteger saveCalls = new AtomicInteger();
+
+        when(productRepository.existsBySlug("mesa-de-jantar")).thenReturn(false);
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            saveCalls.incrementAndGet();
+            Product product = invocation.getArgument(0);
+            saveStarted.countDown();
+            assertTrue(releaseSave.await(2, TimeUnit.SECONDS));
+            product.setId(1L);
+            return product;
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<ProductResponseDTO> first = executor.submit(() -> productService.create(request));
+            assertTrue(saveStarted.await(2, TimeUnit.SECONDS));
+
+            Future<ProductResponseDTO> second = executor.submit(() -> productService.create(request));
+            assertFalse(second.isDone());
+
+            releaseSave.countDown();
+
+            ProductResponseDTO firstResponse = first.get(2, TimeUnit.SECONDS);
+            ProductResponseDTO secondResponse = second.get(2, TimeUnit.SECONDS);
+
+            assertEquals(firstResponse.getId(), secondResponse.getId());
+            assertEquals(1, saveCalls.get());
+            verify(productNotificationService, times(1)).notifyNewProduct(any(Product.class));
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test

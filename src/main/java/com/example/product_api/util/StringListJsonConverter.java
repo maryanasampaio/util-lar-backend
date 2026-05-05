@@ -4,12 +4,15 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
+import org.hibernate.annotations.Mutability;
+import org.hibernate.type.descriptor.java.Immutability;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Converter
+@Mutability(Immutability.class)
 public class StringListJsonConverter implements AttributeConverter<List<String>, String> {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
