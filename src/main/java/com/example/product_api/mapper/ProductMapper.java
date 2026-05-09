@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.model.Product;
+import com.example.product_api.repository.ProductDetailProjection;
 import com.example.product_api.repository.ProductListProjection;
 import com.example.product_api.util.DimensionsJsonConverter;
+import com.example.product_api.util.StringListJsonConverter;
 
 @Component
 public class ProductMapper {
@@ -17,6 +19,7 @@ public class ProductMapper {
     private static final String DEFAULT_CONDITION = "novo";
     private static final String DEFAULT_CATEGORY = "Sem categoria";
     private static final DimensionsJsonConverter DIMENSIONS_CONVERTER = new DimensionsJsonConverter();
+    private static final StringListJsonConverter IMAGES_CONVERTER = new StringListJsonConverter();
 
     public ProductResponseDTO toResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
@@ -32,6 +35,32 @@ public class ProductMapper {
         dto.setImages(product.getImages());
         dto.setStock(product.getStock());
         dto.setDimensions(product.getDimensions());
+        dto.setMaterial(product.getMaterial());
+        dto.setColor(product.getColor());
+        dto.setBrand(product.getBrand());
+        dto.setWarranty(product.getWarranty());
+        dto.setFeatured(product.getFeatured());
+        dto.setSoldDate(product.getSoldDate());
+        dto.setDisponivel(product.getDisponivel());
+        dto.setCreatedAt(product.getCreatedAt());
+        dto.setUpdatedAt(product.getUpdatedAt());
+        return dto;
+    }
+
+    public ProductResponseDTO toDetailResponse(ProductDetailProjection product) {
+        ProductResponseDTO dto = new ProductResponseDTO();
+        dto.setId(product.getId());
+        dto.setName(product.getName());
+        dto.setSlug(product.getSlug());
+        dto.setDescription(product.getDescription());
+        dto.setPrice(product.getPrice());
+        dto.setOriginalPrice(product.getOriginalPrice());
+        dto.setCostPrice(product.getCostPrice());
+        dto.setCondition(product.getCondition());
+        dto.setCategory(product.getCategory());
+        dto.setImages(IMAGES_CONVERTER.convertToEntityAttribute(product.getImagesJson()));
+        dto.setStock(product.getStock());
+        dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());
         dto.setColor(product.getColor());
         dto.setBrand(product.getBrand());

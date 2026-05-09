@@ -75,8 +75,9 @@ public class ProductService {
     }
 
     public ProductResponseDTO findById(Long id) {
-        Product p = repository.findById(id).orElseThrow(() -> new NotFoundException("Produto não encontrado"));
-        return mapper.toResponse(p);
+        return repository.findDetailById(id)
+                .map(mapper::toDetailResponse)
+                .orElseThrow(() -> new NotFoundException("Produto não encontrado"));
     }
 
     @Caching(evict = {

@@ -1,5 +1,7 @@
 package com.example.product_api.repository;
 
+import java.util.Optional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -63,4 +65,33 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 			@Param("featured") Boolean featured,
 			@Param("soldDateFilter") String soldDateFilter,
 			Pageable pageable);
+
+	@Query(value = """
+		SELECT
+			p.id AS id,
+			p.name AS name,
+			p.slug AS slug,
+			p.description AS description,
+			p.price AS price,
+			p.original_price AS originalPrice,
+			p.cost_price AS costPrice,
+			p.product_condition AS `condition`,
+			p.category AS category,
+			p.images AS imagesJson,
+			p.stock AS stock,
+			p.dimensions AS dimensionsJson,
+			p.material AS material,
+			p.color AS color,
+			p.brand AS brand,
+			p.warranty AS warranty,
+			p.featured AS featured,
+			p.sold_date AS soldDate,
+			p.disponivel AS disponivel,
+			p.created_at AS createdAt,
+			p.updated_at AS updatedAt
+		FROM tb_produto p
+		WHERE p.id = :id
+		LIMIT 1
+		""", nativeQuery = true)
+	Optional<ProductDetailProjection> findDetailById(@Param("id") Long id);
 }

@@ -33,6 +33,7 @@ import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.model.Product;
+import com.example.product_api.repository.ProductDetailProjection;
 import com.example.product_api.repository.ProductListProjection;
 import com.example.product_api.repository.ProductRepository;
 
@@ -162,6 +163,24 @@ class ProductServiceTests {
         assertEquals(1, response.size());
         assertEquals(first.getId(), response.get(0).getId());
         verify(productRepository).findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), eq(expectedPageable));
+    }
+
+    @Test
+    void shouldReturnAllImagesOnFindById() {
+        ProductDetailProjection detail = detailProjection(
+                1L,
+                "[\"https://cdn.exemplo.com/mesa-capa.jpg\",\"https://cdn.exemplo.com/mesa-lateral.jpg\",\"https://cdn.exemplo.com/mesa-detalhe.jpg\"]",
+                "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}"
+        );
+
+        when(productRepository.findDetailById(1L)).thenReturn(Optional.of(detail));
+
+        ProductResponseDTO response = productService.findById(1L);
+
+        assertEquals(3, response.getImages().size());
+        assertEquals("https://cdn.exemplo.com/mesa-capa.jpg", response.getImages().get(0));
+        assertEquals("https://cdn.exemplo.com/mesa-lateral.jpg", response.getImages().get(1));
+        assertEquals("https://cdn.exemplo.com/mesa-detalhe.jpg", response.getImages().get(2));
     }
 
     @Test
@@ -299,6 +318,29 @@ class ProductServiceTests {
         when(projection.getCondition()).thenReturn("novo");
         when(projection.getCategory()).thenReturn("Mesas");
         when(projection.getFirstImage()).thenReturn(firstImage);
+        when(projection.getStock()).thenReturn(2);
+        when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
+        when(projection.getMaterial()).thenReturn("Madeira");
+        when(projection.getColor()).thenReturn("Castanho");
+        when(projection.getBrand()).thenReturn("Util Lar");
+        when(projection.getWarranty()).thenReturn("12 meses");
+        when(projection.getFeatured()).thenReturn(Boolean.TRUE);
+        when(projection.getDisponivel()).thenReturn(1);
+        return projection;
+    }
+
+    private ProductDetailProjection detailProjection(Long id, String imagesJson, String dimensionsJson) {
+        ProductDetailProjection projection = org.mockito.Mockito.mock(ProductDetailProjection.class);
+        when(projection.getId()).thenReturn(id);
+        when(projection.getName()).thenReturn("Mesa de jantar");
+        when(projection.getSlug()).thenReturn("mesa-de-jantar");
+        when(projection.getDescription()).thenReturn("Mesa em madeira macica");
+        when(projection.getPrice()).thenReturn(129900L);
+        when(projection.getOriginalPrice()).thenReturn(159900L);
+        when(projection.getCostPrice()).thenReturn(99900L);
+        when(projection.getCondition()).thenReturn("novo");
+        when(projection.getCategory()).thenReturn("Mesas");
+        when(projection.getImagesJson()).thenReturn(imagesJson);
         when(projection.getStock()).thenReturn(2);
         when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
         when(projection.getMaterial()).thenReturn("Madeira");
