@@ -1,10 +1,13 @@
 package com.example.product_api.service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +16,6 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +25,7 @@ import com.example.product_api.dto.ProductDTO.AvailableProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.SoldProductRequestDTO;
 import com.example.product_api.exception.NotFoundException;
 import com.example.product_api.model.Product;
+import com.example.product_api.model.ProductDimensions;
 import com.example.product_api.util.SlugUtil;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.repository.ProductRepository;
@@ -33,8 +36,10 @@ public class ProductService {
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
     private static final String DEFAULT_NAME = "Produto sem nome";
     private static final String DEFAULT_SLUG = "produto-sem-nome";
-    private static final int FIND_ALL_PAGE_SIZE = 100;
-    private static final int MAX_INLINE_IMAGE_LENGTH = 16_384;
+    private static final int DEFAULT_LIST_PAGE = 0;
+    private static final int DEFAULT_LIST_PAGE_SIZE = 24;
+    private static final int MAX_LIST_PAGE_SIZE = 100;
+    private final ConcurrentMap<Integer, CompletableFuture<ProductResponseDTO>> inFlightCreateRequests = new ConcurrentHashMap<>();
 
     @Autowired
     private final ProductRepository repository;
@@ -51,44 +56,28 @@ public class ProductService {
         this.productNotificationService = productNotificationService;
     }
 
-    public List<ProductResponseDTO> findAll(String category, String condition, Boolean featured, String soldDate){
-        Specification<Product> spec = Specification.where(null);
+    public List<ProductResponseDTO> findAll(String category,
+                                            String condition,
+                                            Boolean featured,
+                                            String soldDate,
+                                            Integer page,
+                                            Integer size){
+        int resolvedPage = page != null && page >= 0 ? page : DEFAULT_LIST_PAGE;
+        int resolvedSize = size != null ? Math.min(Math.max(size, 1), MAX_LIST_PAGE_SIZE) : DEFAULT_LIST_PAGE_SIZE;
 
-        if (category != null && !category.isBlank()) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
-        }
+        Pageable pageable = PageRequest.of(resolvedPage, resolvedSize);
+        Page<?> productPage = repository.findListPage(category, condition, featured, soldDate, pageable);
 
-        if (condition != null && !condition.isBlank()) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("condition"), condition));
-        }
-
-        if (featured != null) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("featured"), featured));
-        }
-
-        if ("null".equalsIgnoreCase(soldDate)) {
-            spec = spec.and((root, query, cb) -> cb.isNull(root.get("soldDate")));
-        }
-
-        List<ProductResponseDTO> products = new ArrayList<>();
-        Pageable pageable = PageRequest.of(0, FIND_ALL_PAGE_SIZE);
-        Page<Product> page;
-
-        do {
-            page = repository.findAll(spec, pageable);
-            page.getContent().stream()
-                    .map(mapper::toResponse)
-                    .map(this::sanitizeListResponse)
-                    .forEach(products::add);
-            pageable = page.nextPageable();
-        } while (page.hasNext());
-
-        return products;
+        return productPage.getContent().stream()
+                .map(com.example.product_api.repository.ProductListProjection.class::cast)
+                .map(mapper::toListResponse)
+            .toList();
     }
 
     public ProductResponseDTO findById(Long id) {
-        Product p = repository.findById(id).orElseThrow(() -> new NotFoundException("Produto não encontrado"));
-        return mapper.toResponse(p);
+        return repository.findDetailById(id)
+                .map(mapper::toDetailResponse)
+                .orElseThrow(() -> new NotFoundException("Produto não encontrado"));
     }
 
     @Caching(evict = {
@@ -97,6 +86,28 @@ public class ProductService {
         @CacheEvict(value = "products", allEntries = true)
     })
     public ProductResponseDTO create(ProductRequestDTO dto){
+        int fingerprint = buildCreateFingerprint(dto);
+        CompletableFuture<ProductResponseDTO> inFlight = new CompletableFuture<>();
+        CompletableFuture<ProductResponseDTO> existingRequest = inFlightCreateRequests.putIfAbsent(fingerprint, inFlight);
+
+        if (existingRequest != null) {
+            logger.info("Duplicate create request joined in-flight operation: fingerprint={}", fingerprint);
+            return awaitInFlightCreate(existingRequest);
+        }
+
+        try {
+            ProductResponseDTO response = doCreate(dto);
+            inFlight.complete(response);
+            return response;
+        } catch (RuntimeException ex) {
+            inFlight.completeExceptionally(ex);
+            throw ex;
+        } finally {
+            inFlightCreateRequests.remove(fingerprint, inFlight);
+        }
+    }
+
+    private ProductResponseDTO doCreate(ProductRequestDTO dto) {
         Product p = new Product();
         mapper.populateEntityForCreate(dto, p);
 
@@ -231,30 +242,57 @@ public class ProductService {
         return value != null && !value.isBlank();
     }
 
-    private ProductResponseDTO sanitizeListResponse(ProductResponseDTO dto) {
-        if (dto == null || dto.getImages() == null || dto.getImages().isEmpty()) {
-            return dto;
+    private ProductResponseDTO awaitInFlightCreate(CompletableFuture<ProductResponseDTO> inFlight) {
+        try {
+            return inFlight.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Criacao de produto interrompida", ex);
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new CompletionException(cause);
         }
-
-        List<String> sanitizedImages = dto.getImages().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(image -> !image.isBlank())
-                .filter(this::shouldKeepListImage)
-                .collect(Collectors.toList());
-
-        if (sanitizedImages.size() != dto.getImages().size()) {
-            logger.warn("Large inline images omitted from product listing response: id={}, slug={}",
-                    dto.getId(),
-                    dto.getSlug());
-        }
-
-        dto.setImages(sanitizedImages.isEmpty() ? null : sanitizedImages);
-        return dto;
     }
 
-    private boolean shouldKeepListImage(String image) {
-        return !image.startsWith("data:image/") || image.length() <= MAX_INLINE_IMAGE_LENGTH;
+    private int buildCreateFingerprint(ProductRequestDTO dto) {
+        return Objects.hash(
+                normalize(dto != null ? dto.getName() : null),
+                normalize(dto != null ? dto.getDescription() : null),
+                dto != null ? dto.getPrice() : null,
+                dto != null ? dto.getOriginalPrice() : null,
+                dto != null ? dto.getCostPrice() : null,
+                normalize(dto != null ? dto.getCondition() : null),
+                normalize(dto != null ? dto.getCategory() : null),
+                dto != null && dto.getImages() != null ? dto.getImages().hashCode() : 0,
+                dto != null ? dto.getStock() : null,
+                dimensionsFingerprint(dto != null ? dto.getDimensions() : null),
+                normalize(dto != null ? dto.getMaterial() : null),
+                normalize(dto != null ? dto.getColor() : null),
+                normalize(dto != null ? dto.getBrand() : null),
+                normalize(dto != null ? dto.getWarranty() : null),
+                dto != null ? dto.getFeatured() : null
+        );
+    }
+
+    private int dimensionsFingerprint(ProductDimensions dimensions) {
+        if (dimensions == null) {
+            return 0;
+        }
+
+        return Objects.hash(
+                dimensions.getWidth(),
+                dimensions.getHeight(),
+                dimensions.getDepth(),
+                normalize(dimensions.getUnit())
+        );
+    }
+
+    private String normalize(String value) {
+        return value == null ? null : value.trim();
     }
 
 }
+

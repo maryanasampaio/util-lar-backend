@@ -3,9 +3,11 @@ package com.example.product_api.model;
 import java.time.Instant;
 import java.util.List;
 
+import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -52,6 +54,7 @@ public class Product {
     @Column(nullable = false, length = 100)
     private String category;
 
+    @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")
     @Convert(converter = StringListJsonConverter.class)
     private List<String> images;

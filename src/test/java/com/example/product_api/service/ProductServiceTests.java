@@ -1,14 +1,24 @@
 package com.example.product_api.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,12 +28,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.model.Product;
+import com.example.product_api.repository.ProductDetailProjection;
+import com.example.product_api.repository.ProductListProjection;
 import com.example.product_api.repository.ProductRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,17 +97,90 @@ class ProductServiceTests {
     }
 
     @Test
-    void shouldOmitLargeInlineImagesFromListing() {
-        Product existing = existingProduct();
-        existing.setImages(List.of("data:image/png;base64," + "A".repeat(20000), "https://cdn.exemplo.com/mesa.jpg"));
+    void shouldDeduplicateConcurrentCreateRequestsWithSamePayload() throws Exception {
+        ProductRequestDTO request = updateRequest(159900L);
+        CountDownLatch saveStarted = new CountDownLatch(1);
+        CountDownLatch releaseSave = new CountDownLatch(1);
+        AtomicInteger saveCalls = new AtomicInteger();
 
-        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+        when(productRepository.existsBySlug("mesa-de-jantar")).thenReturn(false);
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            saveCalls.incrementAndGet();
+            Product product = invocation.getArgument(0);
+            saveStarted.countDown();
+            assertTrue(releaseSave.await(2, TimeUnit.SECONDS));
+            product.setId(1L);
+            return product;
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<ProductResponseDTO> first = executor.submit(() -> productService.create(request));
+            assertTrue(saveStarted.await(2, TimeUnit.SECONDS));
+
+            Future<ProductResponseDTO> second = executor.submit(() -> productService.create(request));
+            assertFalse(second.isDone());
+
+            releaseSave.countDown();
+
+            ProductResponseDTO firstResponse = first.get(2, TimeUnit.SECONDS);
+            ProductResponseDTO secondResponse = second.get(2, TimeUnit.SECONDS);
+
+            assertEquals(firstResponse.getId(), secondResponse.getId());
+            assertEquals(1, saveCalls.get());
+            verify(productNotificationService, times(1)).notifyNewProduct(any(Product.class));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldReturnOnlyFirstImageOnListing() {
+        String firstImage = "data:image/png;base64," + "A".repeat(20000);
+        ProductListProjection existing = projection(1L, firstImage, "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}");
+
+        when(productRepository.findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
 
-        List<ProductResponseDTO> response = productService.findAll(null, null, null, null);
+        List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 100);
 
         assertEquals(1, response.size());
-        assertEquals(List.of("https://cdn.exemplo.com/mesa.jpg"), response.get(0).getImages());
+        assertEquals(List.of(firstImage), response.get(0).getImages());
+        assertEquals(220, response.get(0).getDimensions().getWidth());
+    }
+
+    @Test
+    void shouldReturnOnlyRequestedPageOnListing() {
+        ProductListProjection first = projection(1L, "https://cdn.exemplo.com/mesa.jpg", null);
+
+        Pageable expectedPageable = PageRequest.of(0, 1);
+
+        when(productRepository.findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), eq(expectedPageable)))
+            .thenReturn(new PageImpl<>(List.of(first), expectedPageable, 2));
+
+        List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 1);
+
+        assertEquals(1, response.size());
+        assertEquals(first.getId(), response.get(0).getId());
+        verify(productRepository).findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), eq(expectedPageable));
+    }
+
+    @Test
+    void shouldReturnAllImagesOnFindById() {
+        ProductDetailProjection detail = detailProjection(
+                1L,
+                "[\"https://cdn.exemplo.com/mesa-capa.jpg\",\"https://cdn.exemplo.com/mesa-lateral.jpg\",\"https://cdn.exemplo.com/mesa-detalhe.jpg\"]",
+                "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}"
+        );
+
+        when(productRepository.findDetailById(1L)).thenReturn(Optional.of(detail));
+
+        ProductResponseDTO response = productService.findById(1L);
+
+        assertEquals(3, response.getImages().size());
+        assertEquals("https://cdn.exemplo.com/mesa-capa.jpg", response.getImages().get(0));
+        assertEquals("https://cdn.exemplo.com/mesa-lateral.jpg", response.getImages().get(1));
+        assertEquals("https://cdn.exemplo.com/mesa-detalhe.jpg", response.getImages().get(2));
     }
 
     @Test
@@ -220,5 +304,51 @@ class ProductServiceTests {
                 "12 meses",
                 Boolean.TRUE
         );
+    }
+
+    private ProductListProjection projection(Long id, String firstImage, String dimensionsJson) {
+        ProductListProjection projection = org.mockito.Mockito.mock(ProductListProjection.class);
+        when(projection.getId()).thenReturn(id);
+        when(projection.getName()).thenReturn("Mesa de jantar");
+        when(projection.getSlug()).thenReturn("mesa-de-jantar");
+        when(projection.getDescription()).thenReturn("Mesa em madeira macica");
+        when(projection.getPrice()).thenReturn(129900L);
+        when(projection.getOriginalPrice()).thenReturn(159900L);
+        when(projection.getCostPrice()).thenReturn(99900L);
+        when(projection.getCondition()).thenReturn("novo");
+        when(projection.getCategory()).thenReturn("Mesas");
+        when(projection.getFirstImage()).thenReturn(firstImage);
+        when(projection.getStock()).thenReturn(2);
+        when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
+        when(projection.getMaterial()).thenReturn("Madeira");
+        when(projection.getColor()).thenReturn("Castanho");
+        when(projection.getBrand()).thenReturn("Util Lar");
+        when(projection.getWarranty()).thenReturn("12 meses");
+        when(projection.getFeatured()).thenReturn(Boolean.TRUE);
+        when(projection.getDisponivel()).thenReturn(1);
+        return projection;
+    }
+
+    private ProductDetailProjection detailProjection(Long id, String imagesJson, String dimensionsJson) {
+        ProductDetailProjection projection = org.mockito.Mockito.mock(ProductDetailProjection.class);
+        when(projection.getId()).thenReturn(id);
+        when(projection.getName()).thenReturn("Mesa de jantar");
+        when(projection.getSlug()).thenReturn("mesa-de-jantar");
+        when(projection.getDescription()).thenReturn("Mesa em madeira macica");
+        when(projection.getPrice()).thenReturn(129900L);
+        when(projection.getOriginalPrice()).thenReturn(159900L);
+        when(projection.getCostPrice()).thenReturn(99900L);
+        when(projection.getCondition()).thenReturn("novo");
+        when(projection.getCategory()).thenReturn("Mesas");
+        when(projection.getImagesJson()).thenReturn(imagesJson);
+        when(projection.getStock()).thenReturn(2);
+        when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
+        when(projection.getMaterial()).thenReturn("Madeira");
+        when(projection.getColor()).thenReturn("Castanho");
+        when(projection.getBrand()).thenReturn("Util Lar");
+        when(projection.getWarranty()).thenReturn("12 meses");
+        when(projection.getFeatured()).thenReturn(Boolean.TRUE);
+        when(projection.getDisponivel()).thenReturn(1);
+        return projection;
     }
 }
