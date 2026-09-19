@@ -3,6 +3,7 @@ package com.example.product_api.service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 
 import com.example.product_api.dto.ProductDTO.ProductRequestDTO;
@@ -26,6 +28,7 @@ import com.example.product_api.dto.ProductDTO.SoldProductRequestDTO;
 import com.example.product_api.exception.NotFoundException;
 import com.example.product_api.model.Product;
 import com.example.product_api.model.ProductDimensions;
+import com.example.product_api.util.ProductImageUtil;
 import com.example.product_api.util.SlugUtil;
 import com.example.product_api.mapper.ProductMapper;
 import com.example.product_api.repository.ProductRepository;
@@ -39,6 +42,7 @@ public class ProductService {
     private static final int DEFAULT_LIST_PAGE = 0;
     private static final int DEFAULT_LIST_PAGE_SIZE = 24;
     private static final int MAX_LIST_PAGE_SIZE = 100;
+    private static final com.example.product_api.util.StringListJsonConverter IMAGES_CONVERTER = new com.example.product_api.util.StringListJsonConverter();
     private final ConcurrentMap<Integer, CompletableFuture<ProductResponseDTO>> inFlightCreateRequests = new ConcurrentHashMap<>();
 
     @Autowired
@@ -108,6 +112,9 @@ public class ProductService {
     }
 
     private ProductResponseDTO doCreate(ProductRequestDTO dto) {
+        if (dto != null && dto.getImages() != null) {
+            dto.setImages(ProductImageUtil.resolveIncomingImages(null, dto.getImages(), null));
+        }
         Product p = new Product();
         mapper.populateEntityForCreate(dto, p);
 
@@ -148,6 +155,10 @@ public class ProductService {
             newSlug = generateUniqueSlug(buildSlugFromName(dto.getName()), id);
         }
 
+        if (dto != null && dto.getImages() != null) {
+            dto.setImages(ProductImageUtil.resolveIncomingImages(id, dto.getImages(), existing.getImages()));
+        }
+
         mapper.applyPartialUpdate(dto, existing);
         existing.setSlug(newSlug);
 
@@ -163,6 +174,24 @@ public class ProductService {
         }
 
         return mapper.toResponse(saved);
+    }
+
+    public record ProductImageContent(byte[] bytes, MediaType mediaType, Instant version, String redirectUrl) {
+    }
+
+    public Optional<ProductImageContent> findImage(Long id, int index) {
+        return repository.findDetailById(id).flatMap(detail -> {
+            List<String> images = IMAGES_CONVERTER.convertToEntityAttribute(detail.getImagesJson());
+            if (images == null || index < 0 || index >= images.size()) {
+                return Optional.empty();
+            }
+            String stored = images.get(index);
+            if (ProductImageUtil.isHttpUrl(stored)) {
+                return Optional.of(new ProductImageContent(null, null, detail.getUpdatedAt(), stored.trim()));
+            }
+            return ProductImageUtil.decodeDataUrl(stored)
+                    .map(img -> new ProductImageContent(img.bytes(), img.mediaType(), detail.getUpdatedAt(), null));
+        });
     }
 
     public Long delete(Long id) {

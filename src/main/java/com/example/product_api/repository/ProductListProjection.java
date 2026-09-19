@@ -12,7 +12,7 @@ public interface ProductListProjection {
     Long getCostPrice();
     String getCondition();
     String getCategory();
-    String getFirstImage();
+    Integer getHasImages();
     Integer getStock();
     String getDimensionsJson();
     String getMaterial();

@@ -3,6 +3,10 @@ package com.example.product_api.controller;
 import java.util.List;
 import java.util.Map;
 
+import java.net.URI;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,6 +50,25 @@ public class ProductController {
     @GetMapping("/{id}")
     public ProductResponseDTO findById(@PathVariable Long id){
         return service.findById(id);
+    }
+
+    @GetMapping("/{id}/imagens/{index}")
+    public ResponseEntity<byte[]> image(@PathVariable Long id, @PathVariable int index) {
+        return service.findImage(id, index)
+                .map(img -> {
+                    if (img.redirectUrl() != null) {
+                        return ResponseEntity.status(HttpStatus.FOUND)
+                                .location(URI.create(img.redirectUrl()))
+                                .<byte[]>build();
+                    }
+                    long version = img.version() != null ? img.version().toEpochMilli() : 0L;
+                    return ResponseEntity.ok()
+                            .cacheControl(CacheControl.maxAge(365, TimeUnit.DAYS).cachePublic().immutable())
+                            .eTag("\"" + id + "-" + index + "-" + version + "\"")
+                            .contentType(img.mediaType())
+                            .body(img.bytes());
+                })
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping

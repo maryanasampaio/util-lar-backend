@@ -135,9 +135,8 @@ class ProductServiceTests {
     }
 
     @Test
-    void shouldReturnOnlyFirstImageOnListing() {
-        String firstImage = "data:image/png;base64," + "A".repeat(20000);
-        ProductListProjection existing = projection(1L, firstImage, "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}");
+    void shouldReturnOnlyCoverImageRefOnListing() {
+        ProductListProjection existing = projection(1L, true, "{\"width\":220,\"height\":95,\"depth\":105,\"unit\":\"cm\"}");
 
         when(productRepository.findListPage(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(existing), PageRequest.of(0, 100), 1));
@@ -145,13 +144,14 @@ class ProductServiceTests {
         List<ProductResponseDTO> response = productService.findAll(null, null, null, null, 0, 100);
 
         assertEquals(1, response.size());
-        assertEquals(List.of(firstImage), response.get(0).getImages());
+        assertEquals(1, response.get(0).getImages().size());
+        assertTrue(response.get(0).getImages().get(0).startsWith("/produtos/1/imagens/0?v="));
         assertEquals(220, response.get(0).getDimensions().getWidth());
     }
 
     @Test
     void shouldReturnOnlyRequestedPageOnListing() {
-        ProductListProjection first = projection(1L, "https://cdn.exemplo.com/mesa.jpg", null);
+        ProductListProjection first = projection(1L, true, null);
 
         Pageable expectedPageable = PageRequest.of(0, 1);
 
@@ -306,7 +306,7 @@ class ProductServiceTests {
         );
     }
 
-    private ProductListProjection projection(Long id, String firstImage, String dimensionsJson) {
+    private ProductListProjection projection(Long id, boolean hasImages, String dimensionsJson) {
         ProductListProjection projection = org.mockito.Mockito.mock(ProductListProjection.class);
         when(projection.getId()).thenReturn(id);
         when(projection.getName()).thenReturn("Mesa de jantar");
@@ -317,7 +317,7 @@ class ProductServiceTests {
         when(projection.getCostPrice()).thenReturn(99900L);
         when(projection.getCondition()).thenReturn("novo");
         when(projection.getCategory()).thenReturn("Mesas");
-        when(projection.getFirstImage()).thenReturn(firstImage);
+        when(projection.getHasImages()).thenReturn(hasImages ? 1 : 0);
         when(projection.getStock()).thenReturn(2);
         when(projection.getDimensionsJson()).thenReturn(dimensionsJson);
         when(projection.getMaterial()).thenReturn("Madeira");

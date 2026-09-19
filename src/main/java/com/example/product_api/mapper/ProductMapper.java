@@ -10,6 +10,7 @@ import com.example.product_api.model.Product;
 import com.example.product_api.repository.ProductDetailProjection;
 import com.example.product_api.repository.ProductListProjection;
 import com.example.product_api.util.DimensionsJsonConverter;
+import com.example.product_api.util.ProductImageUtil;
 import com.example.product_api.util.StringListJsonConverter;
 
 @Component
@@ -32,7 +33,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(product.getImages());
+        dto.setImages(ProductImageUtil.toPublicRefs(product.getId(), product.getImages(), product.getUpdatedAt()));
         dto.setStock(product.getStock());
         dto.setDimensions(product.getDimensions());
         dto.setMaterial(product.getMaterial());
@@ -58,7 +59,8 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(IMAGES_CONVERTER.convertToEntityAttribute(product.getImagesJson()));
+        dto.setImages(ProductImageUtil.toPublicRefs(product.getId(),
+                IMAGES_CONVERTER.convertToEntityAttribute(product.getImagesJson()), product.getUpdatedAt()));
         dto.setStock(product.getStock());
         dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());
@@ -73,7 +75,6 @@ public class ProductMapper {
         return dto;
     }
 
-    /** Mapeamento leve para listagem: evita carregar o LONGTEXT completo de images na JVM. */
     public ProductResponseDTO toListResponse(ProductListProjection product) {
         ProductResponseDTO dto = new ProductResponseDTO();
         dto.setId(product.getId());
@@ -85,7 +86,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(singleImage(product.getFirstImage()));
+        dto.setImages(coverImageRef(product));
         dto.setStock(product.getStock());
         dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());
@@ -178,11 +179,10 @@ public class ProductMapper {
         return value != null && !value.isBlank();
     }
 
-    private List<String> singleImage(String image) {
-        if (!hasText(image)) {
+    private List<String> coverImageRef(ProductListProjection product) {
+        if (product.getHasImages() == null || product.getHasImages() == 0) {
             return null;
         }
-
-        return List.of(image.trim());
+        return List.of(ProductImageUtil.imageRef(product.getId(), 0, product.getUpdatedAt()));
     }
 }
