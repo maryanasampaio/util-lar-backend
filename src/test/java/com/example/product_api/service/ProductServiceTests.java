@@ -1,7 +1,6 @@
 package com.example.product_api.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,7 +12,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -105,9 +108,11 @@ class ProductServiceTests {
 
     @Test
     void shouldDeduplicateConcurrentCreateRequestsWithSamePayload() throws Exception {
+        Set<Thread> threadsInsideCreate = ConcurrentHashMap.newKeySet();
         ProductRequestDTO request = updateRequest(159900L);
+        request.setImages(new ThreadTrackingImages(request.getImages(), threadsInsideCreate));
+
         CountDownLatch saveStarted = new CountDownLatch(1);
-        CountDownLatch releaseSave = new CountDownLatch(1);
         AtomicInteger saveCalls = new AtomicInteger();
 
         when(productRepository.existsBySlug("mesa-de-jantar")).thenReturn(false);
@@ -115,7 +120,11 @@ class ProductServiceTests {
             saveCalls.incrementAndGet();
             Product product = invocation.getArgument(0);
             saveStarted.countDown();
-            assertTrue(releaseSave.await(2, TimeUnit.SECONDS));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (threadsInsideCreate.size() < 2 && System.nanoTime() < deadline) {
+                Thread.sleep(5);
+            }
+            assertEquals(2, threadsInsideCreate.size(), "a segunda requisicao nao entrou em create()");
             product.setId(1L);
             return product;
         });
@@ -123,14 +132,11 @@ class ProductServiceTests {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             Future<ProductResponseDTO> first = executor.submit(() -> productService.create(request));
-            assertTrue(saveStarted.await(2, TimeUnit.SECONDS));
+            assertTrue(saveStarted.await(5, TimeUnit.SECONDS));
 
             Future<ProductResponseDTO> second = executor.submit(() -> productService.create(request));
-            assertFalse(second.isDone());
 
-            releaseSave.countDown();
-
-            ProductResponseDTO firstResponse = first.get(2, TimeUnit.SECONDS);
+            ProductResponseDTO firstResponse = first.get(10, TimeUnit.SECONDS);
             ProductResponseDTO secondResponse = second.get(2, TimeUnit.SECONDS);
 
             assertEquals(firstResponse.getId(), secondResponse.getId());
@@ -312,6 +318,27 @@ class ProductServiceTests {
         product.setFeatured(Boolean.TRUE);
         product.setDisponivel(1);
         return product;
+    }
+
+    private static final class ThreadTrackingImages extends ArrayList<String> {
+        private static final long serialVersionUID = 1L;
+        private final transient Set<Thread> threads;
+
+        ThreadTrackingImages(Collection<String> source, Set<Thread> threads) {
+            super(source);
+            this.threads = threads;
+        }
+
+        @Override
+        public int hashCode() {
+            threads.add(Thread.currentThread());
+            return super.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return super.equals(other);
+        }
     }
 
     private ProductRequestDTO updateRequest(Long price) {
