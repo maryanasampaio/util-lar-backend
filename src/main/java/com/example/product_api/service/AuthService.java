@@ -23,9 +23,7 @@ public class AuthService {
         this.passwordEncoder = new BCryptPasswordEncoder();
     }
 
-    /**
-     * Valida credenciais do usuário
-     */
+  
     public boolean validateCredentials(String username, String password) {
         Optional<User> userOptional = userRepository.findByUsername(username);
         
@@ -37,9 +35,6 @@ public class AuthService {
         return passwordEncoder.matches(password, user.getPassword());
     }
 
-    /**
-     * Gera access token e refresh token
-     */
     public String[] generateTokens(String username) {
         Optional<User> userOptional = userRepository.findByUsername(username);
         String permission = userOptional.map(User::getPermission).orElse("USER");

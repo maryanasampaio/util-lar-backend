@@ -13,7 +13,13 @@ import org.springframework.test.context.TestPropertySource;
 	"spring.jpa.hibernate.ddl-auto=none",
 	"spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
 	"spring.jpa.show-sql=false",
-	"spring.flyway.enabled=false"
+	"spring.flyway.enabled=false",
+	"storage.s3.url=http://localhost:3900",
+	"storage.s3.bucket=util-lar-test",
+	"storage.s3.key-id=test-key",
+	"storage.s3.secret-key=test-secret",
+	"storage.s3.region=garage",
+	"app.api-base-url=http://localhost:8080"
 })
 class ProductApiApplicationTests {
 

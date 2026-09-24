@@ -3,9 +3,11 @@ package com.example.product_api.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -46,11 +48,16 @@ class ProductServiceTests {
     @Mock
     private ProductNotificationService productNotificationService;
 
+    @Mock
+    private StorageService storageService;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, new ProductMapper(), productNotificationService);
+        lenient().when(storageService.isConfigured()).thenReturn(true);
+        ProductImageService imageService = new ProductImageService(storageService, "http://localhost:8080");
+        productService = new ProductService(productRepository, new ProductMapper(imageService), productNotificationService, imageService);
     }
 
     @Test
@@ -132,6 +139,27 @@ class ProductServiceTests {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void shouldNotLeaveProductInDatabaseWhenImageUploadFails() {
+        ProductRequestDTO request = new ProductRequestDTO();
+        request.setName("Produto com foto");
+        request.setImages(List.of("data:image/png;base64,iVBORw0KGgo="));
+
+        when(productRepository.existsBySlug("produto-com-foto")).thenReturn(false);
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            Product product = invocation.getArgument(0);
+            product.setId(77L);
+            return product;
+        });
+        when(storageService.upload(any(), any(), any()))
+                .thenThrow(new IllegalStateException("S3 indisponivel"));
+
+        assertThrows(IllegalStateException.class, () -> productService.create(request));
+
+        verify(productRepository).deleteById(77L);
+        verify(productNotificationService, never()).notifyNewProduct(any(Product.class));
     }
 
     @Test

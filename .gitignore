@@ -33,6 +33,9 @@ build/
 .vscode/
 
 ### Environment and Configuration ###
-application.properties
+### O application.properties da raiz guarda credenciais e nao e versionado.
+### A referencia das chaves fica em src/main/resources/application.properties.
+/application.properties
 .env
 .env.local
+.application.properties

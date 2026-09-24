@@ -3,6 +3,7 @@ package com.example.product_api.controller;
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.exception.GlobalExceptionHandler;
 import com.example.product_api.service.ProductService;
+import com.example.product_api.service.StorageService;
 import com.example.product_api.util.JwtUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ class ProductControllerValidationTests {
 
     @MockBean
     private ProductService productService;
+
+    @MockBean
+    private StorageService storageService;
 
     @MockBean
     private JwtUtil jwtUtil;

@@ -51,6 +51,12 @@ public class WhatsAppNotificationService {
     @Value("${app.frontend-url:http://localhost:4200}")
     private String frontendUrl;
 
+    private final ProductImageService imageService;
+
+    public WhatsAppNotificationService(ProductImageService imageService) {
+        this.imageService = imageService;
+    }
+
     private volatile boolean initialized = false;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -346,6 +352,7 @@ public class WhatsAppNotificationService {
         }
 
         return product.getImages().stream()
+                .map(imageService::toPublicUrl)
                 .filter(this::isAbsoluteHttpUrl)
                 .findFirst();
     }

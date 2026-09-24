@@ -9,6 +9,7 @@ import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.model.Product;
 import com.example.product_api.repository.ProductDetailProjection;
 import com.example.product_api.repository.ProductListProjection;
+import com.example.product_api.service.ProductImageService;
 import com.example.product_api.util.DimensionsJsonConverter;
 import com.example.product_api.util.StringListJsonConverter;
 
@@ -21,6 +22,12 @@ public class ProductMapper {
     private static final DimensionsJsonConverter DIMENSIONS_CONVERTER = new DimensionsJsonConverter();
     private static final StringListJsonConverter IMAGES_CONVERTER = new StringListJsonConverter();
 
+    private final ProductImageService imageService;
+
+    public ProductMapper(ProductImageService imageService) {
+        this.imageService = imageService;
+    }
+
     public ProductResponseDTO toResponse(Product product) {
         ProductResponseDTO dto = new ProductResponseDTO();
         dto.setId(product.getId());
@@ -32,7 +39,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(product.getImages());
+        dto.setImages(imageService.toPublicUrls(product.getImages()));
         dto.setStock(product.getStock());
         dto.setDimensions(product.getDimensions());
         dto.setMaterial(product.getMaterial());
@@ -58,7 +65,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(IMAGES_CONVERTER.convertToEntityAttribute(product.getImagesJson()));
+        dto.setImages(imageService.toPublicUrls(IMAGES_CONVERTER.convertToEntityAttribute(product.getImagesJson())));
         dto.setStock(product.getStock());
         dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());
@@ -85,7 +92,7 @@ public class ProductMapper {
         dto.setCostPrice(product.getCostPrice());
         dto.setCondition(product.getCondition());
         dto.setCategory(product.getCategory());
-        dto.setImages(singleImage(product.getFirstImage()));
+        dto.setImages(singleImage(imageService.toPublicUrl(product.getFirstImage())));
         dto.setStock(product.getStock());
         dto.setDimensions(DIMENSIONS_CONVERTER.convertToEntityAttribute(product.getDimensionsJson()));
         dto.setMaterial(product.getMaterial());

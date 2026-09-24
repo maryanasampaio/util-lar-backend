@@ -1,7 +1,10 @@
 package com.example.product_api.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -48,12 +51,17 @@ public class ProductService {
     @Autowired
     private final ProductNotificationService productNotificationService;
 
+    @Autowired
+    private final ProductImageService imageService;
+
     public ProductService(ProductRepository productRepository,
                           ProductMapper productMapper,
-                          ProductNotificationService productNotificationService){
+                          ProductNotificationService productNotificationService,
+                          ProductImageService imageService){
         this.repository = productRepository;
         this.mapper = productMapper;
         this.productNotificationService = productNotificationService;
+        this.imageService = imageService;
     }
 
     public List<ProductResponseDTO> findAll(String category,
@@ -123,7 +131,27 @@ public class ProductService {
         p.setSoldDate(null);
         p.setDisponivel(1);
 
+        List<String> incomingImages = p.getImages();
+        boolean needsUpload = imageService.hasLegacyImage(incomingImages);
+        if (needsUpload) {
+            p.setImages(null);
+        } else {
+            p.setImages(imageService.normalizeForStorage(null, incomingImages));
+        }
+
         Product saved = repository.save(p);
+        if (needsUpload) {
+            try {
+                saved.setImages(imageService.normalizeForStorage(saved.getId(), incomingImages));
+                saved = repository.save(saved);
+            } catch (RuntimeException ex) {
+                logger.error("Product image upload failed, rolling back product: id={}, reason={}",
+                        saved.getId(), ex.getMessage());
+                imageService.deleteAll(saved.getId());
+                repository.deleteById(saved.getId());
+                throw ex;
+            }
+        }
         logger.info("Product created successfully: id={}, slug={}", saved.getId(), saved.getSlug());
 
         productNotificationService.notifyNewProduct(saved);
@@ -142,6 +170,7 @@ public class ProductService {
             .orElseThrow(() -> new NotFoundException("Produto não encontrado"));
 
         Long previousPrice = existing.getPrice();
+        List<String> previousImages = existing.getImages() != null ? List.copyOf(existing.getImages()) : null;
 
         String newSlug = existing.getSlug();
         if (hasText(dto != null ? dto.getName() : null)) {
@@ -151,7 +180,15 @@ public class ProductService {
         mapper.applyPartialUpdate(dto, existing);
         existing.setSlug(newSlug);
 
+        if (dto != null && dto.getImages() != null) {
+            existing.setImages(imageService.normalizeForStorage(id, dto.getImages()));
+        }
+
         Product saved = repository.save(existing);
+
+        if (dto != null && dto.getImages() != null) {
+            imageService.deleteRemoved(previousImages, saved.getImages());
+        }
 
         if (!Objects.equals(previousPrice, saved.getPrice())) {
             logger.info("Product price changed: id={}, slug={}, previousPrice={}, currentPrice={}",
@@ -170,7 +207,57 @@ public class ProductService {
             throw new NotFoundException("Produto não encontrado");
         }
         repository.deleteById(id);
+        imageService.deleteAll(id);
         return id;
+    }
+
+    @Caching(evict = {
+        @CacheEvict(value = "dashboard", allEntries = true),
+        @CacheEvict(value = "monthlyEvolution", allEntries = true),
+        @CacheEvict(value = "products", allEntries = true)
+    })
+    public Map<String, Object> migrateLegacyImages(Integer limit) {
+        if (!imageService.isStorageConfigured()) {
+            throw new IllegalStateException(
+                    "Storage S3 nao configurado neste ambiente: migracao nao executada. "
+                    + "Defina S3_URL, S3_BUCKET, S3_KEY_ID e S3_SECRET_KEY.");
+        }
+
+        int resolvedLimit = limit != null && limit > 0 ? limit : Integer.MAX_VALUE;
+        List<Long> ids = repository.findIdsWithLegacyImages();
+
+        int processed = 0;
+        int convertedImages = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        for (Long id : ids) {
+            if (processed >= resolvedLimit) {
+                break;
+            }
+            processed++;
+            try {
+                Product product = repository.findById(id).orElse(null);
+                if (product == null || !imageService.hasLegacyImage(product.getImages())) {
+                    continue;
+                }
+                int before = (int) product.getImages().stream().filter(imageService::isDataUrl).count();
+                product.setImages(imageService.normalizeForStorage(id, product.getImages()));
+                repository.save(product);
+                convertedImages += before;
+                logger.info("Legacy images migrated: productId={}, images={}", id, before);
+            } catch (RuntimeException ex) {
+                logger.warn("Legacy image migration failed: productId={}, reason={}", id, ex.getMessage());
+                failures.add(Map.of("id", id, "error", String.valueOf(ex.getMessage())));
+            }
+        }
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("pendentesAntes", ids.size());
+        report.put("processados", processed);
+        report.put("imagensConvertidas", convertedImages);
+        report.put("falhas", failures);
+        report.put("pendentesDepois", repository.findIdsWithLegacyImages().size());
+        return report;
     }
 
     @Caching(evict = {

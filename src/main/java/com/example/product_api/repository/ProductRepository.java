@@ -1,5 +1,6 @@
 package com.example.product_api.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -14,6 +15,10 @@ import com.example.product_api.model.Product;
 public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpecificationExecutor<Product> {
     boolean existsBySlug(String slug);
     boolean existsBySlugAndIdNot(String slug, Long id);
+
+    @Query(value = "SELECT p.id FROM tb_produto p WHERE p.images LIKE '%data:%' ORDER BY p.id",
+            nativeQuery = true)
+    List<Long> findIdsWithLegacyImages();
 
         @Query(value = "SELECT "
                         + "p.id AS id, "

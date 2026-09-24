@@ -1,9 +1,12 @@
 package com.example.product_api.controller;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +23,7 @@ import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.dto.ProductDTO.AvailableProductRequestDTO;
 import com.example.product_api.dto.ProductDTO.SoldProductRequestDTO;
 import com.example.product_api.service.ProductService;
+import com.example.product_api.service.StorageService;
 
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
@@ -31,7 +35,8 @@ import lombok.AllArgsConstructor;
 public class ProductController {
 
     private final ProductService service;
-    
+    private final StorageService storage;
+
     @GetMapping
     public List<ProductResponseDTO> findAll(
             @RequestParam(required = false) String category,
@@ -72,6 +77,30 @@ public class ProductController {
     @PostMapping("/{id}/available")
     public ProductResponseDTO markAsAvailable(@PathVariable Long id, @RequestBody(required = false) AvailableProductRequestDTO availableRequest) {
         return service.markAsAvailable(id, availableRequest);
+    }
+
+    @GetMapping("/images/{*key}")
+    public ResponseEntity<byte[]> image(@PathVariable String key) {
+        String resolvedKey = key.startsWith("/") ? key.substring(1) : key;
+        return storage.download(resolvedKey)
+                .map(file -> ResponseEntity.ok()
+                        .contentType(mediaTypeOf(file.contentType()))
+                        .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
+                        .body(file.bytes()))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/images/migrate")
+    public Map<String, Object> migrateImages(@RequestParam(required = false) Integer limit) {
+        return service.migrateLegacyImages(limit);
+    }
+
+    private static MediaType mediaTypeOf(String contentType) {
+        try {
+            return contentType != null ? MediaType.parseMediaType(contentType) : MediaType.APPLICATION_OCTET_STREAM;
+        } catch (RuntimeException ex) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 
 }
