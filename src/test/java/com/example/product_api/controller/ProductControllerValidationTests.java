@@ -2,9 +2,11 @@ package com.example.product_api.controller;
 
 import com.example.product_api.dto.ProductDTO.ProductResponseDTO;
 import com.example.product_api.exception.GlobalExceptionHandler;
+import com.example.product_api.exception.StorageUnavailableException;
 import com.example.product_api.service.ProductService;
 import com.example.product_api.service.StorageService;
 import com.example.product_api.util.JwtUtil;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -124,5 +126,37 @@ class ProductControllerValidationTests {
                 .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.description").value("fdf"));
+    }
+
+    @Test
+    void shouldReturn503WhenStorageIsUnavailable() throws Exception {
+        when(jwtUtil.extractUsername("valid-token")).thenReturn("admin");
+        when(jwtUtil.isAccessToken("valid-token")).thenReturn(true);
+        when(jwtUtil.validateToken("valid-token", "admin")).thenReturn(true);
+        when(productService.create(any()))
+                .thenThrow(SdkClientException.create("Unable to execute HTTP request: Connection refused"));
+
+        mockMvc.perform(post("/api/products")
+                .header("Authorization", "Bearer valid-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Sofá\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value(
+                        "Servico de armazenamento de imagens indisponivel. Tente novamente em instantes."));
+    }
+
+    @Test
+    void shouldReturn503WhenStorageIsNotConfigured() throws Exception {
+        when(jwtUtil.extractUsername("valid-token")).thenReturn("admin");
+        when(jwtUtil.isAccessToken("valid-token")).thenReturn(true);
+        when(jwtUtil.validateToken("valid-token", "admin")).thenReturn(true);
+        when(productService.migrateLegacyImages(any()))
+                .thenThrow(new StorageUnavailableException("Storage S3 nao configurado neste ambiente."));
+
+        mockMvc.perform(post("/api/products/images/migrate")
+                .header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503));
     }
 }

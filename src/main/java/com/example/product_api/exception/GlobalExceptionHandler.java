@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -19,10 +21,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import software.amazon.awssdk.core.exception.SdkException;
 
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(NotFoundException ex) {
@@ -76,8 +81,24 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler({StorageUnavailableException.class, SdkException.class})
+    public ResponseEntity<Map<String, Object>> handleStorageUnavailable(RuntimeException ex, HttpServletRequest request) {
+        logger.error("Storage de imagens indisponivel: {} {} -> {}",
+                request.getMethod(), request.getRequestURI(), ex.getMessage(), ex);
+
+        Map<String, Object> body = jsonBody(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Servico de armazenamento de imagens indisponivel. Tente novamente em instantes.",
+                request.getRequestURI(),
+                null);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleRuntime(RuntimeException ex, HttpServletRequest request) {
+        logger.error("Erro nao tratado: {} {} -> {}",
+                request.getMethod(), request.getRequestURI(), ex.getMessage(), ex);
+
         Map<String, Object> body = jsonBody(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), null);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }

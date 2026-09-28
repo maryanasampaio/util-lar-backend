@@ -105,9 +105,17 @@ public class ProductImageService {
         String ext = EXTENSION_BY_MIME.getOrDefault(mime, "bin");
         String key = KEY_PREFIX + productId + "/" + UUID.randomUUID() + "." + ext;
 
-        storage.upload(key, bytes, mime);
-        logger.info("Product image uploaded: productId={}, key={}, bytes={}, contentType={}",
-                productId, key, bytes.length, mime);
+        long startedAt = System.currentTimeMillis();
+        try {
+            storage.upload(key, bytes, mime);
+        } catch (RuntimeException ex) {
+            logger.error("Product image upload FAILED: productId={}, key={}, bytes={}, contentType={}, target={}, elapsedMs={}, reason={}",
+                    productId, key, bytes.length, mime, storage.describeTarget(),
+                    System.currentTimeMillis() - startedAt, ex.getMessage());
+            throw ex;
+        }
+        logger.info("Product image uploaded: productId={}, key={}, bytes={}, contentType={}, elapsedMs={}",
+                productId, key, bytes.length, mime, System.currentTimeMillis() - startedAt);
         return key;
     }
 

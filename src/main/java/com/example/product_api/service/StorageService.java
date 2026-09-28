@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.example.product_api.exception.StorageUnavailableException;
+
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -18,6 +20,7 @@ public class StorageService {
 
     private final S3Client s3;
     private final String bucket;
+    private final String url;
     private final boolean configured;
 
     public StorageService(S3Client s3,
@@ -27,6 +30,7 @@ public class StorageService {
                           @Value("${storage.s3.secret-key:}") String secretKey) {
         this.s3 = s3;
         this.bucket = bucket;
+        this.url = url;
         this.configured = !isBlank(bucket) && !isBlank(url) && !isBlank(keyId) && !isBlank(secretKey);
     }
 
@@ -34,6 +38,10 @@ public class StorageService {
 
     public boolean isConfigured() {
         return configured;
+    }
+
+    public String describeTarget() {
+        return configured ? url + "/" + bucket : "storage nao configurado";
     }
 
     public String upload(String key, byte[] bytes, String contentType) {
@@ -80,7 +88,7 @@ public class StorageService {
 
     private void requireConfigured() {
         if (!configured) {
-            throw new IllegalStateException(
+            throw new StorageUnavailableException(
                     "Storage S3 nao configurado neste ambiente. "
                     + "Defina S3_URL, S3_BUCKET, S3_KEY_ID e S3_SECRET_KEY.");
         }
